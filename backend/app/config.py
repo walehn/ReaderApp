@@ -10,17 +10,21 @@ Configuration - Reader Study MVP
   - RESULTS_DIR: 결과 저장 디렉토리
   - WL_PRESETS: Window/Level 프리셋
   - CACHE_SIZES: 캐시 크기 설정
+  - SECRET_KEY: JWT 서명 키
+  - ACCESS_TOKEN_EXPIRE_HOURS: 토큰 만료 시간
 
 환경 변수:
   READER_STUDY_CASES_DIR: 케이스 디렉토리 경로 (선택)
   READER_STUDY_DEBUG: 디버그 모드 (선택)
+  READER_STUDY_SECRET_KEY: JWT 시크릿 키 (프로덕션 필수)
 ============================================================================
 """
 
 from pathlib import Path
 from pydantic_settings import BaseSettings
-from typing import Optional
+from typing import Optional, List
 import os
+import secrets
 
 
 class Settings(BaseSettings):
@@ -54,6 +58,13 @@ class Settings(BaseSettings):
 
     # 병변 마커 최대 수
     MAX_LESIONS: int = 3
+
+    # 인증 설정
+    SECRET_KEY: str = secrets.token_urlsafe(32)  # JWT 서명 키 (프로덕션에서는 환경변수로 설정)
+    ACCESS_TOKEN_EXPIRE_HOURS: int = 8  # 토큰 만료 시간
+
+    # IP 제한 (선택) - 비어있으면 제한 없음
+    ALLOWED_IP_RANGES: List[str] = []  # 예: ["192.168.0.0/16", "10.0.0.0/8"]
 
     class Config:
         env_prefix = "READER_STUDY_"
