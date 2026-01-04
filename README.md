@@ -9,7 +9,7 @@
 ### 주요 기능
 
 - **2-up 동기화 뷰어**: Baseline(좌) + Followup(우) 동시 표시
-- **서버 측 NIfTI 렌더링**: JPEG 슬라이스 변환으로 브라우저 호환성 보장
+- **서버 측 NIfTI 렌더링**: PNG 슬라이스 변환으로 무손실 품질 보장
 - **병변 마킹**: Canvas 기반 최대 3개 병변 마커 + confidence 레벨
 - **세션 분리**: UNAIDED/AIDED 모드 서버 측 강제
 - **결과 저장**: SQLite DB + CSV/JSON 내보내기
@@ -45,7 +45,7 @@
 │   │   │   ├── schemas.py       # Pydantic 스키마
 │   │   │   └── database.py      # SQLAlchemy 모델
 │   │   └── services/
-│   │       ├── nifti_service.py # NIfTI 로딩 및 JPEG 렌더링
+│   │       ├── nifti_service.py # NIfTI 로딩 및 PNG 렌더링
 │   │       ├── cache_service.py # LRU 캐시 관리
 │   │       └── session_service.py # 세션 설정 관리
 │   ├── requirements.txt
@@ -164,7 +164,7 @@ npm run dev
 
 | 엔드포인트 | 메서드 | 설명 |
 |-----------|--------|------|
-| `/render/slice` | GET | JPEG 슬라이스 이미지 |
+| `/render/slice` | GET | PNG 슬라이스 이미지 |
 | `/render/overlay` | GET | AI 확률맵 오버레이 (AIDED 전용) |
 
 **슬라이스 파라미터**:

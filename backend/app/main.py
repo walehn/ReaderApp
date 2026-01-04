@@ -5,7 +5,7 @@ Web Reader Study MVP - FastAPI Backend
 역할: 간 전이 병변 검출을 위한 Reader Study 웹 서버
 
 주요 기능:
-  - NIfTI 이미지 슬라이스 렌더링 (JPEG)
+  - NIfTI 이미지 슬라이스 렌더링 (PNG)
   - AI 오버레이 제공 (AIDED 모드 전용)
   - 결과 저장 및 내보내기
   - 세션 관리

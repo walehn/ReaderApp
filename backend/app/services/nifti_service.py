@@ -7,7 +7,7 @@ NIfTI Service - Reader Study MVP
 주요 기능:
   - load_volume(): NIfTI 볼륨 로드 (캐시 활용)
   - get_case_metadata(): 케이스 메타데이터 조회
-  - render_slice(): 특정 Z 슬라이스를 JPEG로 렌더링
+  - render_slice(): 특정 Z 슬라이스를 PNG로 렌더링
   - render_overlay(): AI 확률맵 오버레이 렌더링
 
 Window/Level 프리셋:
@@ -19,7 +19,7 @@ Window/Level 프리셋:
 
   service = NIfTIService()
   meta = await service.get_case_metadata("case_0001")
-  jpeg = await service.render_slice("case_0001", "followup", 50, "liver")
+  png = await service.render_slice("case_0001", "followup", 50, "liver")
 ============================================================================
 """
 

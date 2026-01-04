@@ -5,9 +5,9 @@ Cache Service - Reader Study MVP
 역할: LRU 캐시 관리 (슬라이스 이미지, NIfTI 볼륨)
 
 캐시 종류:
-  - slice_cache: 렌더링된 JPEG 슬라이스 캐시
+  - slice_cache: 렌더링된 PNG 슬라이스 캐시
     키: (case_id, series, z, wl)
-    값: JPEG bytes
+    값: PNG bytes
     크기: 최대 500개
 
   - volume_cache: 로드된 NIfTI 볼륨/spacing 캐시
@@ -22,7 +22,7 @@ Cache Service - Reader Study MVP
   cached = slice_cache.get(("case_0001", "baseline", 50, "liver"))
 
   # 캐시 저장
-  slice_cache[("case_0001", "baseline", 50, "liver")] = jpeg_bytes
+  slice_cache[("case_0001", "baseline", 50, "liver")] = png_bytes
 ============================================================================
 """
 
@@ -35,7 +35,7 @@ from typing import Tuple, Optional, List
 # 캐시 인스턴스
 # =============================================================================
 
-# 슬라이스 이미지 캐시: (case_id, series, z, wl) -> JPEG bytes
+# 슬라이스 이미지 캐시: (case_id, series, z, wl) -> PNG bytes
 # 평균 슬라이스 크기 ~100KB, 500개 = ~50MB
 slice_cache: LRUCache[Tuple[str, str, int, str], bytes] = LRUCache(
     maxsize=settings.SLICE_CACHE_SIZE

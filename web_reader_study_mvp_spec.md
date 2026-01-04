@@ -113,7 +113,7 @@ Parameters:
 - wl = liver | soft
 
 Returns:
-- JPEG image
+- PNG image
 
 Caching:
 - RAM LRU cache by (case_id, series, z, wl)

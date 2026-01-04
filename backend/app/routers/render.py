@@ -5,7 +5,7 @@ Render Router - Reader Study MVP
 역할: 슬라이스 및 AI 오버레이 렌더링 API
 
 엔드포인트:
-  GET /render/slice - 슬라이스 JPEG 이미지
+  GET /render/slice - 슬라이스 PNG 이미지
   GET /render/overlay - AI 확률맵 오버레이 (AIDED 모드 전용)
 
 슬라이스 파라미터:
