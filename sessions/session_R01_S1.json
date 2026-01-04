@@ -1,0 +1,8 @@
+{
+  "reader_id": "R01",
+  "session_id": "S1",
+  "mode": "UNAIDED",
+  "case_ids": ["case_0001", "case_0002", "case_0003", "case_0004", "case_0005"],
+  "k_max": 3,
+  "ai_threshold": 0.30
+}
