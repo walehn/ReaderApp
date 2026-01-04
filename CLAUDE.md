@@ -17,3 +17,10 @@ If options are added/changed, default values are modified, or output formats are
 are kept fully synchronized.
 
 5. Keep comments, option defaults, and usage examples aligned at all times.
+
+6. Create a git commit whenever significant code updates are made.
+This includes:
+- Adding new features or functionality
+- Fixing bugs
+- Refactoring existing code
+- Updating configurations or dependencies

@@ -187,8 +187,8 @@ class NIfTIService:
         if format.lower() == "png":
             img.save(buffer, format="PNG", compress_level=6)
         else:
-            # JPEG: 연구용으로 품질 95 사용 (최대 8 HU 오차)
-            img.save(buffer, format="JPEG", quality=95)
+            # JPEG: 설정된 품질 사용 (기본값: 85)
+            img.save(buffer, format="JPEG", quality=self.jpeg_quality)
 
         return buffer.getvalue()
 
