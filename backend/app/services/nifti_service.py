@@ -79,9 +79,7 @@ class NIfTIService:
         # 캐시 확인
         cached = get_cached_volume(case_id, series)
         if cached is not None:
-            # spacing은 캐시하지 않으므로 다시 로드 필요
-            # 최적화: spacing도 함께 캐시할 수 있음
-            pass
+            return cached
 
         filepath = self.cases_dir / case_id / f"{series}.nii.gz"
         if not filepath.exists():
@@ -94,7 +92,7 @@ class NIfTIService:
         )
 
         # 캐시 저장
-        set_cached_volume(case_id, series, data)
+        set_cached_volume(case_id, series, data, spacing)
 
         return data, spacing
 

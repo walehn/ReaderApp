@@ -10,9 +10,9 @@ Cache Service - Reader Study MVP
     값: JPEG bytes
     크기: 최대 500개
 
-  - volume_cache: 로드된 NIfTI 볼륨 캐시
+  - volume_cache: 로드된 NIfTI 볼륨/spacing 캐시
     키: (case_id, series)
-    값: numpy.ndarray
+    값: (numpy.ndarray, spacing)
     크기: 최대 10개
 
 사용 예시:
@@ -29,7 +29,7 @@ Cache Service - Reader Study MVP
 from cachetools import LRUCache
 from app.config import settings
 import numpy as np
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 
 # =============================================================================
 # 캐시 인스턴스
@@ -41,9 +41,9 @@ slice_cache: LRUCache[Tuple[str, str, int, str], bytes] = LRUCache(
     maxsize=settings.SLICE_CACHE_SIZE
 )
 
-# NIfTI 볼륨 캐시: (case_id, series) -> numpy.ndarray
+# NIfTI 볼륨 캐시: (case_id, series) -> (numpy.ndarray, spacing)
 # 평균 볼륨 크기 ~50MB, 10개 = ~500MB
-volume_cache: LRUCache[Tuple[str, str], np.ndarray] = LRUCache(
+volume_cache: LRUCache[Tuple[str, str], Tuple[np.ndarray, List[float]]] = LRUCache(
     maxsize=settings.VOLUME_CACHE_SIZE
 )
 
@@ -71,16 +71,20 @@ def set_cached_slice(
     slice_cache[key] = data
 
 
-def get_cached_volume(case_id: str, series: str) -> Optional[np.ndarray]:
-    """캐시된 볼륨 조회"""
+def get_cached_volume(
+    case_id: str, series: str
+) -> Optional[Tuple[np.ndarray, List[float]]]:
+    """캐시된 볼륨/spacing 조회"""
     key = (case_id, series)
     return volume_cache.get(key)
 
 
-def set_cached_volume(case_id: str, series: str, data: np.ndarray) -> None:
-    """볼륨 캐시 저장"""
+def set_cached_volume(
+    case_id: str, series: str, data: np.ndarray, spacing: List[float]
+) -> None:
+    """볼륨/spacing 캐시 저장"""
     key = (case_id, series)
-    volume_cache[key] = data
+    volume_cache[key] = (data, spacing)
 
 
 def get_cached_ai_prob(case_id: str) -> Optional[np.ndarray]:
