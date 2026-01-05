@@ -17,14 +17,22 @@ API 엔드포인트:
   - POST /auth/logout        로그아웃 (감사 로그)
   - GET  /auth/me            현재 사용자 정보
 
+  세션 관리 (인증 필수):
+  - GET  /sessions/my              내 세션 목록
+  - POST /sessions/{id}/enter      세션 진입
+  - GET  /sessions/{id}/current    현재 케이스 정보
+  - POST /sessions/{id}/advance    다음 케이스로 이동
+  - POST /sessions/assign          세션 할당 (관리자)
+  - POST /sessions/{id}/reset      세션 초기화 (관리자)
+
   케이스/렌더링:
   - GET  /case/meta          케이스 메타데이터
   - GET  /render/slice       슬라이스 이미지
   - GET  /render/overlay     AI 오버레이 (AIDED only)
 
-  스터디:
+  스터디 (레거시):
   - POST /study/submit       결과 제출
-  - GET  /study/session      세션 설정
+  - GET  /study/session      세션 설정 (JSON 파일 기반)
   - GET  /study/progress     진행 상황
 
   관리자:
@@ -51,7 +59,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models.database import init_db
-from app.routers import case, render, study, admin, auth
+from app.routers import case, render, study, admin, auth, sessions
 from app.config import settings
 from app.core.middleware import (
     IPRestrictionMiddleware,
@@ -119,6 +127,7 @@ app.include_router(auth.router)
 app.include_router(case.router)
 app.include_router(render.router)
 app.include_router(study.router)
+app.include_router(sessions.router)  # DB 기반 세션 관리 (Phase 3)
 app.include_router(admin.router)
 
 
