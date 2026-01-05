@@ -110,8 +110,10 @@ export default function AdminPage() {
       loadStudyConfig()
     } else if (activeTab === 'dashboard') {
       loadDashboardData()
+      loadStudyConfig()  // 그룹명 표시를 위해 studyConfig도 로드
     } else if (activeTab === 'readers') {
       loadReaders()
+      loadStudyConfig()  // 그룹명 표시를 위해 studyConfig도 로드
     } else if (activeTab === 'logs') {
       loadAuditLogs()
     }
@@ -784,7 +786,9 @@ export default function AdminPage() {
                   {groupProgress.map(group => (
                     <div key={group.group} className="p-4 bg-medical-darker rounded-lg">
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-white font-medium">Group {group.group}</span>
+                        <span className="text-white font-medium">
+                          {studyConfig?.group_names?.[`group_${group.group}`] || `Group ${group.group}`}
+                        </span>
                         <span className="text-primary-400 font-bold">{group.progress_percent}%</span>
                       </div>
                       <div className="h-2 bg-gray-700 rounded-full overflow-hidden mb-2">
@@ -829,7 +833,11 @@ export default function AdminPage() {
                               <p className="text-white font-medium">{reader.name}</p>
                               <p className="text-xs text-gray-500">{reader.reader_code}</p>
                             </td>
-                            <td className="py-3 text-center text-gray-300">{reader.group || '-'}</td>
+                            <td className="py-3 text-center text-gray-300">
+                              {reader.group
+                                ? (studyConfig?.group_names?.[`group_${reader.group}`] || `Group ${reader.group}`)
+                                : '-'}
+                            </td>
                             <td className="py-3 text-center">
                               {s1 ? (
                                 <span className={s1.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
@@ -1004,7 +1012,9 @@ export default function AdminPage() {
                         <td className="px-4 py-3 text-white">{reader.name}</td>
                         <td className="px-4 py-3 text-gray-400">{reader.email}</td>
                         <td className="px-4 py-3 text-white">
-                          {reader.role === 'admin' ? '-' : `Group ${reader.group || '-'}`}
+                          {reader.role === 'admin'
+                            ? '-'
+                            : (studyConfig?.group_names?.[`group_${reader.group}`] || `Group ${reader.group || '-'}`)}
                         </td>
                         <td className="px-4 py-3 text-white">
                           {reader.role === 'admin' ? '-' : `${reader.session_count}개`}
