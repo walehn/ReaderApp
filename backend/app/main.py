@@ -59,7 +59,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models.database import init_db
-from app.routers import case, render, study, admin, auth, sessions
+from app.routers import case, render, study, admin, auth, sessions, readers
 from app.config import settings
 from app.core.middleware import (
     IPRestrictionMiddleware,
@@ -128,6 +128,7 @@ app.include_router(case.router)
 app.include_router(render.router)
 app.include_router(study.router)
 app.include_router(sessions.router)  # DB 기반 세션 관리 (Phase 3)
+app.include_router(readers.router)   # 리더 관리 (Phase 5)
 app.include_router(admin.router)
 
 

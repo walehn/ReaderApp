@@ -202,6 +202,122 @@ export const authApi = {
 // 세션 API (Phase 4, 인증 필요)
 // =============================================================================
 
+// =============================================================================
+// 관리자 API (Phase 5)
+// =============================================================================
+
+export const adminApi = {
+  /**
+   * 리더 목록 조회
+   * @param {string} token - JWT 토큰
+   * @param {boolean} includeInactive - 비활성 리더 포함 여부
+   * @returns {Promise<Reader[]>}
+   */
+  getReaders: async (token, includeInactive = false) => {
+    return fetchApiWithAuth(`/readers?include_inactive=${includeInactive}`, token)
+  },
+
+  /**
+   * 리더 상세 조회
+   * @param {string} token - JWT 토큰
+   * @param {number} readerId - 리더 ID
+   * @returns {Promise<ReaderDetail>}
+   */
+  getReader: async (token, readerId) => {
+    return fetchApiWithAuth(`/readers/${readerId}`, token)
+  },
+
+  /**
+   * 리더 생성
+   * @param {string} token - JWT 토큰
+   * @param {Object} data - 리더 정보
+   * @returns {Promise<Reader>}
+   */
+  createReader: async (token, data) => {
+    return fetchApiWithAuth('/readers', token, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  /**
+   * 리더 수정
+   * @param {string} token - JWT 토큰
+   * @param {number} readerId - 리더 ID
+   * @param {Object} data - 수정 정보
+   * @returns {Promise<Reader>}
+   */
+  updateReader: async (token, readerId, data) => {
+    return fetchApiWithAuth(`/readers/${readerId}`, token, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  /**
+   * 리더 비활성화
+   * @param {string} token - JWT 토큰
+   * @param {number} readerId - 리더 ID
+   * @returns {Promise<{message}>}
+   */
+  deactivateReader: async (token, readerId) => {
+    return fetchApiWithAuth(`/readers/${readerId}`, token, {
+      method: 'DELETE',
+    })
+  },
+
+  /**
+   * 세션 할당
+   * @param {string} token - JWT 토큰
+   * @param {number} readerId - 리더 ID
+   * @param {string} sessionCode - 세션 코드 (S1 또는 S2)
+   * @returns {Promise<Session>}
+   */
+  assignSession: async (token, readerId, sessionCode) => {
+    return fetchApiWithAuth('/sessions/assign', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        reader_id: readerId,
+        session_code: sessionCode,
+      }),
+    })
+  },
+
+  /**
+   * 세션 초기화
+   * @param {string} token - JWT 토큰
+   * @param {number} sessionId - 세션 ID
+   * @returns {Promise<{message}>}
+   */
+  resetSession: async (token, sessionId) => {
+    return fetchApiWithAuth(`/sessions/${sessionId}/reset`, token, {
+      method: 'POST',
+    })
+  },
+
+  /**
+   * 감사 로그 조회
+   * @param {string} token - JWT 토큰
+   * @param {Object} filters - 필터 옵션
+   * @returns {Promise<AuditLog[]>}
+   */
+  getAuditLogs: async (token, { action, readerId, limit = 100, offset = 0 } = {}) => {
+    let url = `/admin/audit-logs?limit=${limit}&offset=${offset}`
+    if (action) url += `&action=${encodeURIComponent(action)}`
+    if (readerId) url += `&reader_id=${readerId}`
+    return fetchApiWithAuth(url, token)
+  },
+
+  /**
+   * 결과 데이터 내보내기 URL
+   * @param {string} format - 'csv' 또는 'json'
+   * @returns {string}
+   */
+  getExportUrl: (format = 'csv') => {
+    return `${API_BASE}/admin/export?format=${format}`
+  },
+}
+
 export const sessionsApi = {
   /**
    * 내 세션 목록 조회

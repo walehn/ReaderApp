@@ -1,17 +1,26 @@
 """
 ============================================================================
-Admin Router - Reader Study MVP
+Admin Router - Reader Study MVP (Phase 5)
 ============================================================================
-역할: 관리자용 데이터 내보내기 및 시스템 관리 API
+역할: 관리자용 데이터 내보내기, 감사 로그, 시스템 관리 API
 
 엔드포인트:
-  GET /admin/export - 결과 데이터 내보내기 (CSV/JSON)
-  GET /admin/sessions - 사용 가능한 세션 목록
-  GET /admin/cache-stats - 캐시 통계
+  데이터 내보내기:
+  - GET /admin/export           결과 데이터 내보내기 (CSV/JSON)
 
-내보내기 형식:
-  - CSV: 환자 수준 테이블 + 병변 수준 테이블
-  - JSON: 전체 데이터 구조화
+  감사 로그:
+  - GET /admin/audit-logs       감사 로그 조회
+
+  시스템 관리:
+  - GET /admin/sessions         사용 가능한 세션 목록 (레거시)
+  - GET /admin/cache-stats      캐시 통계
+  - POST /admin/cache-clear     캐시 초기화
+
+  결과 관리:
+  - DELETE /admin/results/{id}  결과 삭제
+
+인증:
+  모든 엔드포인트는 관리자 권한 필요 (Phase 5에서 추가)
 
 필터 옵션:
   - session_id: 특정 세션만
@@ -19,19 +28,22 @@ Admin Router - Reader Study MVP
 ============================================================================
 """
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from fastapi.responses import Response, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
-from typing import Literal, Optional
+from typing import Literal, Optional, List
+from pydantic import BaseModel
+from datetime import datetime
 import csv
 import json
 from io import StringIO
 
-from app.models.database import get_db, StudyResult, LesionMark
+from app.models.database import get_db, StudyResult, LesionMark, AuditLog, Reader
 from app.services.session_service import session_service
 from app.services.cache_service import get_cache_stats, clear_all_caches
+from app.core.dependencies import require_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -188,12 +200,146 @@ async def get_cache_statistics() -> dict:
 
 
 @router.post("/cache-clear")
-async def clear_caches() -> dict:
+async def clear_caches(
+    admin: Reader = Depends(require_admin)
+) -> dict:
     """
-    모든 캐시 초기화
+    모든 캐시 초기화 (관리자 전용)
 
     Returns:
         성공 메시지
     """
     clear_all_caches()
     return {"message": "All caches cleared"}
+
+
+# =============================================================================
+# Pydantic 스키마 (Phase 5)
+# =============================================================================
+
+class AuditLogResponse(BaseModel):
+    """감사 로그 응답"""
+    id: int
+    reader_code: Optional[str]
+    action: str
+    resource_type: Optional[str]
+    resource_id: Optional[str]
+    ip_address: Optional[str]
+    details: Optional[str]
+    created_at: datetime
+
+
+class MessageResponse(BaseModel):
+    """단순 메시지 응답"""
+    message: str
+
+
+# =============================================================================
+# 감사 로그 API (Phase 5)
+# =============================================================================
+
+@router.get("/audit-logs", response_model=List[AuditLogResponse])
+async def get_audit_logs(
+    action: Optional[str] = Query(None, description="작업 유형 필터 (LOGIN, LOGOUT, ADMIN_* 등)"),
+    reader_id: Optional[int] = Query(None, description="리더 ID 필터"),
+    limit: int = Query(100, ge=1, le=1000, description="최대 결과 수"),
+    offset: int = Query(0, ge=0, description="오프셋"),
+    admin: Reader = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    감사 로그 조회 (관리자 전용)
+
+    모든 시스템 활동 로그를 조회합니다.
+    """
+    query = select(AuditLog).options(selectinload(AuditLog.reader))
+
+    if action:
+        query = query.where(AuditLog.action.contains(action))
+
+    if reader_id:
+        query = query.where(AuditLog.reader_id == reader_id)
+
+    query = query.order_by(desc(AuditLog.created_at)).offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    logs = result.scalars().all()
+
+    responses = []
+    for log in logs:
+        responses.append(AuditLogResponse(
+            id=log.id,
+            reader_code=log.reader.reader_code if log.reader else None,
+            action=log.action,
+            resource_type=log.resource_type,
+            resource_id=log.resource_id,
+            ip_address=log.ip_address,
+            details=log.details,
+            created_at=log.created_at
+        ))
+
+    return responses
+
+
+# =============================================================================
+# 결과 관리 API (Phase 5)
+# =============================================================================
+
+def get_client_ip(request: Request) -> str:
+    """클라이언트 IP 추출"""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@router.delete("/results/{result_id}", response_model=MessageResponse)
+async def delete_result(
+    result_id: int,
+    request: Request,
+    admin: Reader = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    결과 삭제 (관리자 전용)
+
+    특정 결과와 관련 병변 마커를 삭제합니다.
+    """
+    result = await db.execute(
+        select(StudyResult)
+        .options(selectinload(StudyResult.lesions))
+        .where(StudyResult.id == result_id)
+    )
+    study_result = result.scalar_one_or_none()
+
+    if study_result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="결과를 찾을 수 없습니다"
+        )
+
+    # 결과 정보 저장 (로그용)
+    result_info = {
+        "reader_id": study_result.reader_id,
+        "session_id": study_result.session_id,
+        "case_id": study_result.case_id
+    }
+
+    # 삭제
+    await db.delete(study_result)
+    await db.commit()
+
+    # 감사 로그
+    audit_log = AuditLog(
+        reader_id=admin.id,
+        action="ADMIN_RESULT_DELETE",
+        resource_type="result",
+        resource_id=str(result_id),
+        ip_address=get_client_ip(request),
+        user_agent=request.headers.get("User-Agent", "")[:500],
+        details=json.dumps(result_info)
+    )
+    db.add(audit_log)
+    await db.commit()
+
+    return MessageResponse(message=f"결과 {result_id}이 삭제되었습니다")

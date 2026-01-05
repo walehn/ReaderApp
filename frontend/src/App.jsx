@@ -28,6 +28,7 @@ import IntroPage from './pages/IntroPage'
 import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ViewerPage from './pages/ViewerPage'
+import AdminPage from './pages/AdminPage'
 
 /**
  * ProtectedRoute 컴포넌트
@@ -80,6 +81,14 @@ function AppRouter() {
         element={
           <ProtectedRoute>
             <ViewerPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminPage />
           </ProtectedRoute>
         }
       />
