@@ -9,14 +9,25 @@ Web Reader Study MVP - FastAPI Backend
   - AI 오버레이 제공 (AIDED 모드 전용)
   - 결과 저장 및 내보내기
   - 세션 관리
+  - 인증/인가 (JWT 토큰 기반)
 
 API 엔드포인트:
+  인증:
+  - POST /auth/login         로그인 (JWT 토큰 발급)
+  - POST /auth/logout        로그아웃 (감사 로그)
+  - GET  /auth/me            현재 사용자 정보
+
+  케이스/렌더링:
   - GET  /case/meta          케이스 메타데이터
   - GET  /render/slice       슬라이스 이미지
   - GET  /render/overlay     AI 오버레이 (AIDED only)
+
+  스터디:
   - POST /study/submit       결과 제출
   - GET  /study/session      세션 설정
   - GET  /study/progress     진행 상황
+
+  관리자:
   - GET  /admin/export       데이터 내보내기
   - GET  /admin/sessions     세션 목록
   - GET  /admin/cache-stats  캐시 통계
@@ -40,8 +51,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models.database import init_db
-from app.routers import case, render, study, admin
+from app.routers import case, render, study, admin, auth
 from app.config import settings
+from app.core.middleware import (
+    IPRestrictionMiddleware,
+    RequestLoggingMiddleware,
+    SecurityHeadersMiddleware
+)
 
 
 @asynccontextmanager
@@ -70,6 +86,10 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# =============================================================================
+# 미들웨어 등록 (역순 실행 - 마지막 추가된 것이 먼저 실행)
+# =============================================================================
+
 # CORS 설정 (개발용 - 프로덕션에서는 제한 필요)
 app.add_middleware(
     CORSMiddleware,
@@ -79,7 +99,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 보안 헤더 미들웨어
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 요청 로깅 미들웨어
+app.add_middleware(RequestLoggingMiddleware)
+
+# IP 제한 미들웨어 (ALLOWED_IP_RANGES 설정 시 활성화)
+app.add_middleware(IPRestrictionMiddleware)
+
+# =============================================================================
 # 라우터 등록
+# =============================================================================
+
+# 인증 라우터 (가장 먼저 등록)
+app.include_router(auth.router)
+
+# 기능 라우터
 app.include_router(case.router)
 app.include_router(render.router)
 app.include_router(study.router)
