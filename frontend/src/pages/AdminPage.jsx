@@ -17,7 +17,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { adminApi, authApi } from '../services/api'
+import { adminApi, authApi, studyConfigApi, dashboardApi } from '../services/api'
 
 /**
  * UTC ISO 문자열을 한국 시간(KST)으로 변환
@@ -46,12 +46,24 @@ export default function AdminPage() {
   const navigate = useNavigate()
   const { user, logout, getToken, isAdmin } = useAuth()
 
-  const [activeTab, setActiveTab] = useState('readers')
+  const [activeTab, setActiveTab] = useState('study-config')
   const [readers, setReaders] = useState([])
   const [auditLogs, setAuditLogs] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [successMessage, setSuccessMessage] = useState(null)
+
+  // 연구 설정 상태
+  const [studyConfig, setStudyConfig] = useState(null)
+  const [isEditingConfig, setIsEditingConfig] = useState(false)
+  const [configForm, setConfigForm] = useState({})
+  const [editingGroupName, setEditingGroupName] = useState(null)  // 현재 편집 중인 그룹 키
+
+  // 대시보드 상태
+  const [dashboardSummary, setDashboardSummary] = useState(null)
+  const [readerProgress, setReaderProgress] = useState([])
+  const [groupProgress, setGroupProgress] = useState([])
+  const [sessionStats, setSessionStats] = useState([])
 
   // 리더/관리자 생성 폼
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -94,12 +106,108 @@ export default function AdminPage() {
 
   // 데이터 로드
   useEffect(() => {
-    if (activeTab === 'readers') {
+    if (activeTab === 'study-config') {
+      loadStudyConfig()
+    } else if (activeTab === 'dashboard') {
+      loadDashboardData()
+    } else if (activeTab === 'readers') {
       loadReaders()
     } else if (activeTab === 'logs') {
       loadAuditLogs()
     }
   }, [activeTab])
+
+  // 연구 설정 로드
+  const loadStudyConfig = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await studyConfigApi.getConfig(getToken())
+      setStudyConfig(data)
+      setConfigForm({
+        study_name: data.study_name || '',
+        study_description: data.study_description || '',
+        ai_threshold: data.ai_threshold || 0.30,
+        k_max: data.k_max || 3,
+        require_lesion_marking: data.require_lesion_marking ?? true,
+      })
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 대시보드 데이터 로드
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const [summary, readers, groups, sessions] = await Promise.all([
+        dashboardApi.getSummary(getToken()),
+        dashboardApi.getByReader(getToken()),
+        dashboardApi.getByGroup(getToken()),
+        dashboardApi.getBySession(getToken()),
+      ])
+      setDashboardSummary(summary)
+      setReaderProgress(readers)
+      setGroupProgress(groups)
+      setSessionStats(sessions)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 연구 설정 저장
+  const handleSaveConfig = async (e) => {
+    e.preventDefault()
+    try {
+      setLoading(true)
+      setError(null)
+      await studyConfigApi.updateConfig(getToken(), configForm)
+      setSuccessMessage('연구 설정이 저장되었습니다')
+      setIsEditingConfig(false)
+      loadStudyConfig()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 연구 설정 잠금
+  const handleLockConfig = async () => {
+    if (!confirm('정말 연구 설정을 잠그시겠습니까?\n잠금 후에는 핵심 설정을 변경할 수 없습니다.')) return
+    try {
+      setLoading(true)
+      setError(null)
+      await studyConfigApi.lockConfig(getToken())
+      setSuccessMessage('연구 설정이 잠겼습니다')
+      loadStudyConfig()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 그룹명 저장 (즉시 저장)
+  const handleSaveGroupName = async (group, newName) => {
+    if (!newName || newName.trim() === '') return
+    try {
+      const updatedNames = {
+        ...(studyConfig.group_names || {}),
+        [group]: newName.trim()
+      }
+      await studyConfigApi.updateConfig(getToken(), { group_names: updatedNames })
+      setSuccessMessage('그룹명이 저장되었습니다')
+      loadStudyConfig()
+    } catch (err) {
+      setError(err.message)
+    }
+  }
 
   const loadReaders = async () => {
     try {
@@ -277,6 +385,8 @@ export default function AdminPage() {
   }, [successMessage])
 
   const tabs = [
+    { id: 'study-config', label: '연구 설정' },
+    { id: 'dashboard', label: '진행 현황' },
     { id: 'readers', label: '리더 관리' },
     { id: 'logs', label: '감사 로그' },
     { id: 'export', label: '데이터 내보내기' }
@@ -361,6 +471,403 @@ export default function AdminPage() {
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-600 rounded-lg">
             <p className="text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* 연구 설정 탭 */}
+        {activeTab === 'study-config' && (
+          <div className="space-y-6">
+            {/* Lock 상태 배너 */}
+            {studyConfig?.is_locked && (
+              <div className="p-4 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                <p className="text-yellow-400 font-medium">
+                  🔒 연구 설정이 잠겼습니다. 핵심 설정은 변경할 수 없습니다.
+                  {studyConfig.locked_at && ` (${formatKST(studyConfig.locked_at)})`}
+                </p>
+              </div>
+            )}
+
+            {/* 헤더 */}
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-white">연구 설정</h2>
+              <div className="flex gap-2">
+                {!studyConfig?.is_locked && (
+                  <>
+                    {isEditingConfig ? (
+                      <>
+                        <button
+                          onClick={() => setIsEditingConfig(false)}
+                          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                        >
+                          취소
+                        </button>
+                        <button
+                          onClick={handleSaveConfig}
+                          disabled={loading}
+                          className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                        >
+                          저장
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setIsEditingConfig(true)}
+                        className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                      >
+                        수정
+                      </button>
+                    )}
+                    <button
+                      onClick={handleLockConfig}
+                      disabled={loading}
+                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      🔒 잠금
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {studyConfig && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 구조 설정 */}
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">세션/블록 구조</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                      <span className="text-gray-400">총 세션 수</span>
+                      <span className="text-white font-medium">{studyConfig.total_sessions}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                      <span className="text-gray-400">세션당 블록 수</span>
+                      <span className="text-white font-medium">{studyConfig.total_blocks}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                      <span className="text-gray-400">리더 그룹 수</span>
+                      <span className="text-white font-medium">{studyConfig.total_groups}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-gray-400">케이스 순서</span>
+                      <span className="text-white font-medium">
+                        {studyConfig.case_order_mode === 'random' ? '랜덤' : '고정'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 입력 설정 */}
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4">판독 입력 설정</h3>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                      <span className="text-gray-400">최대 병변 마커 수 (k_max)</span>
+                      {isEditingConfig && !studyConfig.is_locked ? (
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={configForm.k_max}
+                          onChange={e => setConfigForm({...configForm, k_max: parseInt(e.target.value)})}
+                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                        />
+                      ) : (
+                        <span className="text-white font-medium">{studyConfig.k_max}</span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                      <span className="text-gray-400">AI 확률 임계값</span>
+                      {isEditingConfig ? (
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={configForm.ai_threshold}
+                          onChange={e => setConfigForm({...configForm, ai_threshold: parseFloat(e.target.value)})}
+                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                        />
+                      ) : (
+                        <span className="text-white font-medium">{studyConfig.ai_threshold}</span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                      <span className="text-gray-400">Lesion marking 필수</span>
+                      {isEditingConfig && !studyConfig.is_locked ? (
+                        <input
+                          type="checkbox"
+                          checked={configForm.require_lesion_marking}
+                          onChange={e => setConfigForm({...configForm, require_lesion_marking: e.target.checked})}
+                          className="w-5 h-5"
+                        />
+                      ) : (
+                        <span className="text-white font-medium">
+                          {studyConfig.require_lesion_marking ? '예' : '아니오'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-gray-400">Confidence 입력 방식</span>
+                      <span className="text-white font-medium">{studyConfig.confidence_mode}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 메타 정보 */}
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-white mb-4">메타 정보</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-gray-400 mb-2">연구 이름</label>
+                      {isEditingConfig ? (
+                        <input
+                          type="text"
+                          value={configForm.study_name}
+                          onChange={e => setConfigForm({...configForm, study_name: e.target.value})}
+                          className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                        />
+                      ) : (
+                        <p className="text-white">{studyConfig.study_name}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-gray-400 mb-2">설명</label>
+                      {isEditingConfig ? (
+                        <textarea
+                          value={configForm.study_description || ''}
+                          onChange={e => setConfigForm({...configForm, study_description: e.target.value})}
+                          rows={3}
+                          className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                        />
+                      ) : (
+                        <p className="text-white">{studyConfig.study_description || '-'}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Crossover 매핑 */}
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 lg:col-span-2">
+                  <h3 className="text-lg font-semibold text-white mb-4">Crossover 매핑</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-gray-400 border-b border-gray-700">
+                          <th className="py-2 text-left">그룹</th>
+                          <th className="py-2 text-center">S1 Block A</th>
+                          <th className="py-2 text-center">S1 Block B</th>
+                          <th className="py-2 text-center">S2 Block A</th>
+                          <th className="py-2 text-center">S2 Block B</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {studyConfig.crossover_mapping && Object.entries(studyConfig.crossover_mapping).map(([group, sessions]) => (
+                          <tr key={group} className="border-b border-gray-800">
+                            <td className="py-3">
+                              {editingGroupName === group ? (
+                                <input
+                                  type="text"
+                                  value={configForm.group_names?.[group] || ''}
+                                  onChange={e => setConfigForm({
+                                    ...configForm,
+                                    group_names: {
+                                      ...configForm.group_names,
+                                      [group]: e.target.value
+                                    }
+                                  })}
+                                  onBlur={(e) => {
+                                    setEditingGroupName(null)
+                                    handleSaveGroupName(group, e.target.value)
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                      setEditingGroupName(null)
+                                      handleSaveGroupName(group, e.target.value)
+                                    }
+                                  }}
+                                  autoFocus
+                                  className="w-32 px-2 py-1 bg-medical-darker border border-gray-600 rounded text-white text-sm"
+                                  maxLength={50}
+                                />
+                              ) : (
+                                <span
+                                  onClick={() => {
+                                    setEditingGroupName(group)
+                                    if (!configForm.group_names) {
+                                      setConfigForm({
+                                        ...configForm,
+                                        group_names: studyConfig.group_names || {}
+                                      })
+                                    }
+                                  }}
+                                  className="cursor-pointer hover:bg-gray-700 px-2 py-1 rounded text-white inline-flex items-center gap-1"
+                                  title="클릭하여 수정"
+                                >
+                                  {studyConfig.group_names?.[group] || group.replace('_', ' ').toUpperCase()}
+                                  <span className="text-gray-500 text-xs">✏️</span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className={`px-2 py-1 rounded text-xs ${sessions.S1?.block_A === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
+                                {sessions.S1?.block_A}
+                              </span>
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className={`px-2 py-1 rounded text-xs ${sessions.S1?.block_B === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
+                                {sessions.S1?.block_B}
+                              </span>
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className={`px-2 py-1 rounded text-xs ${sessions.S2?.block_A === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
+                                {sessions.S2?.block_A}
+                              </span>
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className={`px-2 py-1 rounded text-xs ${sessions.S2?.block_B === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
+                                {sessions.S2?.block_B}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 대시보드 탭 */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            <h2 className="text-2xl font-bold text-white">진행 현황</h2>
+
+            {/* 요약 카드 */}
+            {dashboardSummary && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
+                  <p className="text-gray-400 text-sm">전체 리더</p>
+                  <p className="text-2xl font-bold text-white">{dashboardSummary.total_readers}</p>
+                  <p className="text-xs text-gray-500">시작: {dashboardSummary.readers_started} / 완료: {dashboardSummary.readers_completed}</p>
+                </div>
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
+                  <p className="text-gray-400 text-sm">전체 세션</p>
+                  <p className="text-2xl font-bold text-white">{dashboardSummary.total_sessions}</p>
+                  <p className="text-xs text-gray-500">완료: {dashboardSummary.completed_sessions} / 진행: {dashboardSummary.in_progress_sessions}</p>
+                </div>
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
+                  <p className="text-gray-400 text-sm">전체 진행률</p>
+                  <p className="text-2xl font-bold text-primary-400">{dashboardSummary.overall_progress_percent}%</p>
+                  <div className="mt-2 h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-primary-500 transition-all"
+                      style={{ width: `${dashboardSummary.overall_progress_percent}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
+                  <p className="text-gray-400 text-sm">설정 상태</p>
+                  <p className={`text-2xl font-bold ${dashboardSummary.study_config_locked ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {dashboardSummary.study_config_locked ? '🔒 잠김' : '🔓 열림'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* 그룹별 진행률 */}
+            {groupProgress.length > 0 && (
+              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">그룹별 진행률</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {groupProgress.map(group => (
+                    <div key={group.group} className="p-4 bg-medical-darker rounded-lg">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-white font-medium">Group {group.group}</span>
+                        <span className="text-primary-400 font-bold">{group.progress_percent}%</span>
+                      </div>
+                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden mb-2">
+                        <div
+                          className="h-full bg-primary-500 transition-all"
+                          style={{ width: `${group.progress_percent}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        리더: {group.total_readers}명 (시작: {group.readers_started}, 완료: {group.readers_completed})
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 리더별 진행 현황 */}
+            {readerProgress.length > 0 && (
+              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">리더별 진행 현황</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-gray-400 border-b border-gray-700">
+                        <th className="py-2 text-left">리더</th>
+                        <th className="py-2 text-center">그룹</th>
+                        <th className="py-2 text-center">S1 진행률</th>
+                        <th className="py-2 text-center">S2 진행률</th>
+                        <th className="py-2 text-center">전체</th>
+                        <th className="py-2 text-center">상태</th>
+                        <th className="py-2 text-right">마지막 접속</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {readerProgress.map(reader => {
+                        const s1 = reader.sessions.find(s => s.session_code === 'S1')
+                        const s2 = reader.sessions.find(s => s.session_code === 'S2')
+                        return (
+                          <tr key={reader.reader_id} className="border-b border-gray-800">
+                            <td className="py-3">
+                              <p className="text-white font-medium">{reader.name}</p>
+                              <p className="text-xs text-gray-500">{reader.reader_code}</p>
+                            </td>
+                            <td className="py-3 text-center text-gray-300">{reader.group || '-'}</td>
+                            <td className="py-3 text-center">
+                              {s1 ? (
+                                <span className={s1.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
+                                  {s1.progress_percent}%
+                                </span>
+                              ) : '-'}
+                            </td>
+                            <td className="py-3 text-center">
+                              {s2 ? (
+                                <span className={s2.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
+                                  {s2.progress_percent}%
+                                </span>
+                              ) : '-'}
+                            </td>
+                            <td className="py-3 text-center text-primary-400 font-medium">
+                              {reader.total_progress_percent}%
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className={`px-2 py-1 rounded text-xs ${
+                                reader.status === 'completed' ? 'bg-green-900 text-green-300' :
+                                reader.status === 'active' ? 'bg-blue-900 text-blue-300' :
+                                'bg-gray-700 text-gray-300'
+                              }`}>
+                                {reader.status === 'completed' ? '완료' :
+                                 reader.status === 'active' ? '진행중' : '대기'}
+                              </span>
+                            </td>
+                            <td className="py-3 text-right text-gray-400 text-xs">
+                              {reader.last_accessed_at ? formatKST(reader.last_accessed_at) : '-'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

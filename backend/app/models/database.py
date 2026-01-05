@@ -5,6 +5,7 @@ SQLite Database Models - Reader Study MVP
 역할: 결과 저장 및 사용자/세션 관리를 위한 SQLAlchemy ORM 모델
 
 테이블:
+  - study_config: 전역 연구 설정 (Singleton)
   - readers: 리더(판독자) 및 관리자 계정
   - study_sessions: 스터디 세션 (Block/Mode 매핑)
   - session_progress: 세션 진행 상태 영속화
@@ -13,7 +14,7 @@ SQLite Database Models - Reader Study MVP
   - audit_logs: 감사 로그
 
 사용 예시:
-  from app.models.database import get_db, StudyResult, Reader
+  from app.models.database import get_db, StudyResult, Reader, StudyConfig
 
   async with get_db() as db:
       result = StudyResult(reader_id="R01", ...)
@@ -52,6 +53,82 @@ async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False
 
 # ORM 베이스
 Base = declarative_base()
+
+
+# =============================================================================
+# ORM 모델 - 전역 연구 설정
+# =============================================================================
+
+# 기본 Crossover 매핑 (2x2x2 Latin Square)
+DEFAULT_CROSSOVER_MAPPING = """{
+  "group_1": {
+    "S1": {"block_A": "UNAIDED", "block_B": "AIDED"},
+    "S2": {"block_A": "AIDED", "block_B": "UNAIDED"}
+  },
+  "group_2": {
+    "S1": {"block_A": "AIDED", "block_B": "UNAIDED"},
+    "S2": {"block_A": "UNAIDED", "block_B": "AIDED"}
+  }
+}"""
+
+# 기본 그룹명 (Lock 후에도 수정 가능)
+DEFAULT_GROUP_NAMES = '{"group_1": "Group 1", "group_2": "Group 2"}'
+
+
+class StudyConfig(Base):
+    """
+    전역 연구 설정 테이블 (Singleton - 단일 레코드)
+
+    역할:
+      - 연구 전체의 구조적 설정 저장
+      - 첫 세션 시작 후 핵심 설정 자동 잠금
+      - Crossover 디자인 매핑 관리
+
+    Lock 정책:
+      - 잠기는 필드: total_sessions, total_blocks, total_groups,
+                    crossover_mapping, k_max, require_lesion_marking
+      - 수정 가능: study_name, study_description, ai_threshold, group_names
+
+    MVP 제한:
+      - 세션=2, 블록=2, 그룹=2 구조만 공식 지원
+    """
+    __tablename__ = "study_config"
+
+    id = Column(Integer, primary_key=True, default=1)
+
+    # 세션/블록 구조 (MVP: 모두 2로 고정)
+    total_sessions = Column(Integer, default=2, nullable=False)
+    total_blocks = Column(Integer, default=2, nullable=False)
+    total_groups = Column(Integer, default=2, nullable=False)
+
+    # Crossover 매핑 (JSON Text, canonical 저장)
+    crossover_mapping = Column(Text, default=DEFAULT_CROSSOVER_MAPPING, nullable=False)
+
+    # 입력 설정
+    k_max = Column(Integer, default=3, nullable=False)
+    ai_threshold = Column(Float, default=0.30, nullable=False)
+    confidence_mode = Column(String(20), default="categorical", nullable=False)
+    # patient_decision은 항상 필수 (연구 방법론상 고정) - 필드 없음
+    require_lesion_marking = Column(Boolean, default=True, nullable=False)
+
+    # 케이스 순서 설정
+    case_order_mode = Column(String(20), default="random", nullable=False)
+    random_seed = Column(Integer, nullable=True)
+
+    # Lock 상태
+    is_locked = Column(Boolean, default=False, nullable=False)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by = Column(Integer, ForeignKey("readers.id", ondelete="SET NULL"), nullable=True)
+
+    # 메타데이터
+    study_name = Column(String(200), default="Reader Study", nullable=False)
+    study_description = Column(Text, nullable=True)
+    group_names = Column(Text, default=DEFAULT_GROUP_NAMES, nullable=False)  # Lock 후에도 수정 가능
+    created_at = Column(DateTime, default=_utc_now)
+    updated_at = Column(DateTime, default=_utc_now, onupdate=_utc_now)
+
+    # 관계 (Lock 발생시킨 리더 참조)
+    locked_by_reader = relationship("Reader", foreign_keys=[locked_by])
 
 
 # =============================================================================

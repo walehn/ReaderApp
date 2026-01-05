@@ -306,3 +306,151 @@ class AuditLogFilter(BaseModel):
     from_date: Optional[datetime] = None
     to_date: Optional[datetime] = None
     limit: int = Field(default=100, le=1000)
+
+
+# =============================================================================
+# 연구 설정 스키마 (StudyConfig)
+# =============================================================================
+
+class CrossoverBlockMapping(BaseModel):
+    """개별 블록의 모드 매핑"""
+    block_A: Literal["UNAIDED", "AIDED"]
+    block_B: Literal["UNAIDED", "AIDED"]
+
+
+class CrossoverSessionMapping(BaseModel):
+    """세션별 블록 매핑"""
+    S1: CrossoverBlockMapping
+    S2: CrossoverBlockMapping
+
+
+class CrossoverMapping(BaseModel):
+    """전체 Crossover 매핑 (그룹별)"""
+    group_1: CrossoverSessionMapping
+    group_2: CrossoverSessionMapping
+
+
+class StudyConfigResponse(BaseModel):
+    """연구 설정 조회 응답"""
+    id: int
+    total_sessions: int
+    total_blocks: int
+    total_groups: int
+    crossover_mapping: dict  # JSON으로 파싱된 CrossoverMapping
+    k_max: int
+    ai_threshold: float
+    confidence_mode: str
+    require_lesion_marking: bool
+    case_order_mode: str
+    random_seed: Optional[int]
+    is_locked: bool
+    locked_at: Optional[datetime]
+    locked_by: Optional[int]
+    study_name: str
+    study_description: Optional[str]
+    group_names: dict  # {"group_1": "Group 1", "group_2": "Group 2"} - Lock 후에도 수정 가능
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class StudyConfigUpdateRequest(BaseModel):
+    """연구 설정 수정 요청
+
+    Lock 전: 모든 필드 수정 가능
+    Lock 후: study_name, study_description, ai_threshold, group_names만 수정 가능
+    """
+    # 구조 설정 (Lock 후 수정 불가)
+    total_sessions: Optional[int] = Field(None, ge=1, le=4)
+    total_blocks: Optional[int] = Field(None, ge=1, le=4)
+    total_groups: Optional[int] = Field(None, ge=1, le=4)
+    crossover_mapping: Optional[dict] = None
+
+    # 입력 설정 (Lock 후 수정 불가)
+    k_max: Optional[int] = Field(None, ge=1, le=10)
+    require_lesion_marking: Optional[bool] = None
+
+    # 케이스 순서 설정
+    case_order_mode: Optional[Literal["random", "fixed"]] = None
+    random_seed: Optional[int] = None
+
+    # 수정 가능 필드 (Lock 후에도 변경 가능)
+    ai_threshold: Optional[float] = Field(None, ge=0.0, le=1.0)
+    confidence_mode: Optional[Literal["categorical", "continuous"]] = None
+    study_name: Optional[str] = Field(None, max_length=200)
+    study_description: Optional[str] = None
+    group_names: Optional[dict] = None  # {"group_1": "그룹명", ...} - Lock 후에도 수정 가능
+
+
+class MessageResponse(BaseModel):
+    """일반 메시지 응답"""
+    message: str
+
+
+# =============================================================================
+# 대시보드 스키마 (Dashboard)
+# =============================================================================
+
+class DashboardSummaryResponse(BaseModel):
+    """전체 진행 요약"""
+    total_readers: int = Field(..., description="전체 리더 수 (활성화된)")
+    readers_started: int = Field(..., description="1개 이상 세션 시작한 리더 수")
+    readers_completed: int = Field(..., description="모든 세션 완료한 리더 수")
+    total_sessions: int = Field(..., description="전체 할당된 세션 수")
+    completed_sessions: int = Field(..., description="완료된 세션 수")
+    in_progress_sessions: int = Field(..., description="진행중 세션 수")
+    pending_sessions: int = Field(..., description="대기중 세션 수")
+    overall_progress_percent: float = Field(..., description="전체 진행률 (%)")
+    study_config_locked: bool = Field(..., description="연구 설정 잠금 상태")
+
+
+class SessionProgressDetail(BaseModel):
+    """세션 진행 상세"""
+    session_id: int
+    session_code: str
+    status: str
+    block_a_mode: str
+    block_b_mode: str
+    current_block: Optional[str]
+    current_case_index: Optional[int]
+    total_cases: int
+    completed_cases: int
+    progress_percent: float
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+
+
+class ReaderProgressResponse(BaseModel):
+    """리더별 진행 현황"""
+    reader_id: int
+    reader_code: str
+    name: str
+    group: Optional[int]
+    sessions: list[SessionProgressDetail]
+    total_progress_percent: float
+    avg_reading_time_sec: Optional[float]
+    last_accessed_at: Optional[datetime]
+    status: Literal["idle", "active", "completed"]  # 활동 상태
+
+
+class GroupProgressResponse(BaseModel):
+    """그룹별 진행 현황"""
+    group: int
+    total_readers: int
+    readers_started: int
+    readers_completed: int
+    total_sessions: int
+    completed_sessions: int
+    progress_percent: float
+
+
+class SessionStatsResponse(BaseModel):
+    """세션별 통계"""
+    session_code: str
+    total_assigned: int
+    completed: int
+    in_progress: int
+    pending: int
+    completion_rate: float

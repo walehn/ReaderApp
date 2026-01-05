@@ -414,4 +414,85 @@ export const sessionsApi = {
   },
 }
 
+// =============================================================================
+// 연구 설정 API (StudyConfig)
+// =============================================================================
+
+export const studyConfigApi = {
+  /**
+   * 현재 연구 설정 조회
+   * @param {string} token - JWT 토큰
+   * @returns {Promise<StudyConfigResponse>}
+   */
+  getConfig: async (token) => {
+    return fetchApiWithAuth('/study-config', token)
+  },
+
+  /**
+   * 연구 설정 수정
+   * @param {string} token - JWT 토큰
+   * @param {Object} data - 수정할 설정 데이터
+   * @returns {Promise<StudyConfigResponse>}
+   */
+  updateConfig: async (token, data) => {
+    return fetchApiWithAuth('/study-config', token, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  /**
+   * 연구 설정 수동 잠금
+   * @param {string} token - JWT 토큰
+   * @returns {Promise<{message: string}>}
+   */
+  lockConfig: async (token) => {
+    return fetchApiWithAuth('/study-config/lock', token, {
+      method: 'POST',
+    })
+  },
+}
+
+// =============================================================================
+// 대시보드 API (Dashboard)
+// =============================================================================
+
+export const dashboardApi = {
+  /**
+   * 전체 진행 요약
+   * @param {string} token - JWT 토큰
+   * @returns {Promise<DashboardSummaryResponse>}
+   */
+  getSummary: async (token) => {
+    return fetchApiWithAuth('/dashboard/summary', token)
+  },
+
+  /**
+   * 리더별 진행률
+   * @param {string} token - JWT 토큰
+   * @returns {Promise<ReaderProgressResponse[]>}
+   */
+  getByReader: async (token) => {
+    return fetchApiWithAuth('/dashboard/by-reader', token)
+  },
+
+  /**
+   * 그룹별 진행률
+   * @param {string} token - JWT 토큰
+   * @returns {Promise<GroupProgressResponse[]>}
+   */
+  getByGroup: async (token) => {
+    return fetchApiWithAuth('/dashboard/by-group', token)
+  },
+
+  /**
+   * 세션별 진행률
+   * @param {string} token - JWT 토큰
+   * @returns {Promise<SessionStatsResponse[]>}
+   */
+  getBySession: async (token) => {
+    return fetchApiWithAuth('/dashboard/by-session', token)
+  },
+}
+
 export default api

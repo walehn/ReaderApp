@@ -39,6 +39,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.database import Reader, StudySession, SessionProgress, AuditLog
 from app.core.security import utc_now
+from app.services.study_config_service import StudyConfigService
 
 
 # =============================================================================
@@ -170,6 +171,10 @@ class StudySessionService:
         # 최초 진입: 케이스 순서 생성 및 진행 상태 초기화
         if session.case_order_block_a is None:
             is_new_session = True
+
+            # 연구 설정 Lock 트리거 (첫 세션 시작 시 자동 잠금)
+            config_service = StudyConfigService(self.db)
+            await config_service.trigger_lock_if_needed(reader_id)
 
             # 케이스 순서 랜덤 셔플
             shuffled_a = block_a_cases.copy()
