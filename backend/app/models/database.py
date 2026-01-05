@@ -28,9 +28,14 @@ SQLite Database Models - Reader Study MVP
 from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+
+def _utc_now() -> datetime:
+    """Timezone-aware UTC 현재 시간 반환 (모델 기본값용)"""
+    return datetime.now(timezone.utc)
 
 # =============================================================================
 # 데이터베이스 설정
@@ -75,7 +80,7 @@ class Reader(Base):
     role = Column(String(20), default="reader", nullable=False)  # reader | admin
     group = Column(Integer, nullable=True)  # 1 | 2 (crossover 그룹, admin은 null)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
     last_login_at = Column(DateTime, nullable=True)
 
     # 관계
@@ -117,7 +122,7 @@ class StudySession(Base):
 
     # 상태: pending(대기), in_progress(진행중), completed(완료)
     status = Column(String(20), default="pending", nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # 관계
     reader = relationship("Reader", back_populates="sessions")
@@ -179,7 +184,7 @@ class AuditLog(Base):
     ip_address = Column(String(45), nullable=True)  # IPv6 지원
     user_agent = Column(String(500), nullable=True)
     details = Column(Text, nullable=True)  # JSON 형식 추가 정보
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=_utc_now, index=True)
 
     # 관계
     reader = relationship("Reader", back_populates="audit_logs")
@@ -200,7 +205,7 @@ class StudyResult(Base):
     case_id = Column(String(50), nullable=False, index=True)
     patient_decision = Column(Boolean, nullable=False)
     time_spent_sec = Column(Float, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=_utc_now)
 
     # 병변 마커 관계
     lesions = relationship("LesionMark", back_populates="result", cascade="all, delete-orphan")

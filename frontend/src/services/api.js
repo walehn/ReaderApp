@@ -196,6 +196,23 @@ export const authApi = {
   getMe: async (token) => {
     return fetchApiWithAuth('/auth/me', token)
   },
+
+  /**
+   * 비밀번호 변경
+   * @param {string} token - JWT 토큰
+   * @param {string} currentPassword - 현재 비밀번호
+   * @param {string} newPassword - 새 비밀번호
+   * @returns {Promise<{message}>}
+   */
+  changePassword: async (token, currentPassword, newPassword) => {
+    return fetchApiWithAuth('/auth/change-password', token, {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    })
+  },
 }
 
 // =============================================================================
@@ -267,6 +284,20 @@ export const adminApi = {
   },
 
   /**
+   * 리더/관리자 비밀번호 변경 (관리자 전용)
+   * @param {string} token - JWT 토큰
+   * @param {number} readerId - 리더 ID
+   * @param {string} newPassword - 새 비밀번호
+   * @returns {Promise<Reader>}
+   */
+  updateReaderPassword: async (token, readerId, newPassword) => {
+    return fetchApiWithAuth(`/readers/${readerId}`, token, {
+      method: 'PATCH',
+      body: JSON.stringify({ password: newPassword }),
+    })
+  },
+
+  /**
    * 세션 할당
    * @param {string} token - JWT 토큰
    * @param {number} readerId - 리더 ID
@@ -292,6 +323,18 @@ export const adminApi = {
   resetSession: async (token, sessionId) => {
     return fetchApiWithAuth(`/sessions/${sessionId}/reset`, token, {
       method: 'POST',
+    })
+  },
+
+  /**
+   * 세션 할당 취소 (삭제)
+   * @param {string} token - JWT 토큰
+   * @param {number} sessionId - 세션 ID
+   * @returns {Promise<{message}>}
+   */
+  deleteSession: async (token, sessionId) => {
+    return fetchApiWithAuth(`/sessions/${sessionId}`, token, {
+      method: 'DELETE',
     })
   },
 

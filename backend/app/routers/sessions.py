@@ -11,8 +11,9 @@ Sessions Router - Reader Study MVP (Phase 3)
   - POST /sessions/{id}/advance 다음 케이스로 이동
 
 관리자 전용:
-  - POST /sessions/assign      리더에게 세션 할당
-  - POST /sessions/{id}/reset  세션 초기화
+  - POST   /sessions/assign      리더에게 세션 할당
+  - POST   /sessions/{id}/reset  세션 초기화
+  - DELETE /sessions/{id}        세션 할당 취소
 
 인증:
   모든 엔드포인트는 JWT 토큰 인증이 필요합니다.
@@ -383,3 +384,36 @@ async def reset_session(
     )
 
     return MessageResponse(message=f"세션 {session_id}이 초기화되었습니다")
+
+
+@router.delete("/{session_id}", response_model=MessageResponse)
+async def delete_session(
+    session_id: int,
+    request: Request,
+    admin: Reader = Depends(require_admin),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    세션 할당 취소 (관리자 전용)
+
+    세션을 완전히 삭제합니다. 진행 중인 세션도 삭제 가능합니다.
+    """
+    service = StudySessionService(db)
+
+    try:
+        deleted_info = await service.delete_session(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+
+    # 감사 로그
+    await log_audit(
+        db=db,
+        action="ADMIN_SESSION_DELETE",
+        reader_id=admin.id,
+        request=request,
+        resource_type="session",
+        resource_id=str(session_id),
+        details=f'{{"target_reader_id": {deleted_info["reader_id"]}, "session_code": "{deleted_info["session_code"]}", "status": "{deleted_info["status"]}"}}'
+    )
+
+    return MessageResponse(message=f"세션 {deleted_info['session_code']}가 삭제되었습니다")

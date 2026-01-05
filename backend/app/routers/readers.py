@@ -58,6 +58,7 @@ class ReaderCreateRequest(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
     group: Optional[int] = Field(None, ge=1, le=2, description="Crossover 그룹 (1 또는 2)")
+    role: str = Field("reader", pattern="^(reader|admin)$", description="역할 (reader 또는 admin)")
 
 
 class ReaderUpdateRequest(BaseModel):
@@ -144,9 +145,9 @@ async def list_readers(
     """
     리더 목록 조회
 
-    관리자를 제외한 모든 리더 계정을 반환합니다.
+    모든 계정(리더 + 관리자)을 반환합니다.
     """
-    query = select(Reader).where(Reader.role == "reader")
+    query = select(Reader)
 
     if not include_inactive:
         query = query.where(Reader.is_active == True)
@@ -264,14 +265,14 @@ async def create_reader(
             detail=f"코드 '{reader_data.reader_code}'가 이미 사용 중입니다"
         )
 
-    # 리더 생성
+    # 리더/관리자 생성
     reader = Reader(
         reader_code=reader_data.reader_code,
         name=reader_data.name,
         email=reader_data.email,
         password_hash=hash_password(reader_data.password),
-        role="reader",
-        group=reader_data.group,
+        role=reader_data.role,
+        group=reader_data.group if reader_data.role == "reader" else None,
         is_active=True
     )
     db.add(reader)
@@ -327,11 +328,18 @@ async def update_reader(
             detail="리더를 찾을 수 없습니다"
         )
 
+    # 관리자 계정은 비밀번호와 활성 상태만 변경 가능
     if reader.role == "admin":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="관리자 계정은 수정할 수 없습니다"
-        )
+        has_forbidden_fields = any([
+            update_data.name is not None,
+            update_data.email is not None,
+            update_data.group is not None
+        ])
+        if has_forbidden_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="관리자 계정은 비밀번호와 활성 상태만 변경할 수 있습니다"
+            )
 
     # 변경 내역 추적
     changes = []

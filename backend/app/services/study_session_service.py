@@ -32,13 +32,13 @@ Crossover 디자인:
 
 import json
 import random
-from datetime import datetime
 from typing import Optional, List, Tuple
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.database import Reader, StudySession, SessionProgress, AuditLog
+from app.core.security import utc_now
 
 
 # =============================================================================
@@ -187,8 +187,8 @@ class StudySessionService:
                 current_block="A",
                 current_case_index=0,
                 completed_cases="[]",
-                started_at=datetime.utcnow(),
-                last_accessed_at=datetime.utcnow()
+                started_at=utc_now(),
+                last_accessed_at=utc_now()
             )
             self.db.add(new_progress)
             await self.db.commit()
@@ -202,7 +202,7 @@ class StudySessionService:
             # 재진입: 마지막 접속 시간 업데이트
             progress = session.progress
             if progress:
-                progress.last_accessed_at = datetime.utcnow()
+                progress.last_accessed_at = utc_now()
                 await self.db.commit()
                 current_block = progress.current_block
                 current_index = progress.current_case_index
@@ -363,14 +363,14 @@ class StudySessionService:
             else:
                 # 세션 완료
                 session.status = "completed"
-                progress.completed_at = datetime.utcnow()
+                progress.completed_at = utc_now()
                 block_transition = "COMPLETED"
         else:
             # 같은 블록 내 다음 케이스
             progress.current_case_index = next_index
             block_transition = None
 
-        progress.last_accessed_at = datetime.utcnow()
+        progress.last_accessed_at = utc_now()
         await self.db.commit()
 
         # 결과 반환
@@ -493,3 +493,33 @@ class StudySessionService:
             await self.db.delete(session.progress)
 
         await self.db.commit()
+
+    async def delete_session(self, session_id: int) -> dict:
+        """
+        세션 삭제 (할당 취소, 관리자용)
+
+        세션과 관련된 진행 상태를 완전히 삭제합니다.
+
+        Returns:
+            삭제된 세션 정보 (reader_id, session_code)
+        """
+        session = await self.get_session_by_id(session_id)
+        if session is None:
+            raise ValueError("세션을 찾을 수 없습니다")
+
+        # 삭제 전 정보 저장 (감사 로그용)
+        deleted_info = {
+            "reader_id": session.reader_id,
+            "session_code": session.session_code,
+            "status": session.status
+        }
+
+        # 진행 상태 먼저 삭제 (외래키 제약)
+        if session.progress:
+            await self.db.delete(session.progress)
+
+        # 세션 삭제
+        await self.db.delete(session)
+        await self.db.commit()
+
+        return deleted_info

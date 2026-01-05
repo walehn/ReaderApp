@@ -20,19 +20,20 @@ import { useAuth } from '../contexts/AuthContext'
 
 export default function LoginPage() {
   const navigate = useNavigate()
-  const { login, isAuthenticated, error, clearError } = useAuth()
+  const { login, isAuthenticated, isAdmin, error, clearError } = useAuth()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [localError, setLocalError] = useState(null)
 
-  // 이미 로그인되어 있으면 대시보드로
+  // 이미 로그인되어 있으면 역할에 따라 리다이렉트
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/dashboard', { replace: true })
+      // 관리자는 관리자 페이지로, 일반 사용자는 대시보드로
+      navigate(isAdmin ? '/admin' : '/dashboard', { replace: true })
     }
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, isAdmin, navigate])
 
   // 에러 초기화
   useEffect(() => {
@@ -54,8 +55,10 @@ export default function LoginPage() {
 
     setIsLoading(true)
     try {
-      await login(email, password)
-      navigate('/dashboard', { replace: true })
+      const reader = await login(email, password)
+      // 관리자는 관리자 페이지로, 일반 사용자는 대시보드로
+      const redirectPath = reader.role === 'admin' ? '/admin' : '/dashboard'
+      navigate(redirectPath, { replace: true })
     } catch (err) {
       setLocalError(err.message)
     } finally {

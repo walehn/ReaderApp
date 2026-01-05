@@ -26,11 +26,34 @@ Security Module - Reader Study MVP
 
 import bcrypt
 from jose import JWTError, jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 
 from app.config import settings
+
+
+# =============================================================================
+# Timezone-aware UTC datetime 유틸리티
+# =============================================================================
+
+def utc_now() -> datetime:
+    """
+    Timezone-aware UTC 현재 시간 반환
+
+    datetime.utcnow() 대신 사용하면 JSON 직렬화 시 "+00:00" 또는 "Z" 형태로
+    시간대 정보가 포함되어, 클라이언트에서 올바르게 변환할 수 있습니다.
+
+    Returns:
+        datetime: UTC timezone 정보를 포함한 현재 시간
+
+    Example:
+        >>> utc_now()
+        datetime.datetime(2026, 1, 5, 8, 44, 29, tzinfo=datetime.timezone.utc)
+        >>> utc_now().isoformat()
+        '2026-01-05T08:44:29+00:00'
+    """
+    return datetime.now(timezone.utc)
 
 # =============================================================================
 # 비밀번호 해싱 설정 (bcrypt 직접 사용)
@@ -99,12 +122,12 @@ def create_access_token(
     if expires_delta is None:
         expires_delta = timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
 
-    expire = datetime.utcnow() + expires_delta
+    expire = utc_now() + expires_delta
     to_encode = {
         "sub": str(reader_id),
         "role": role,
         "exp": expire,
-        "iat": datetime.utcnow()
+        "iat": utc_now()
     }
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

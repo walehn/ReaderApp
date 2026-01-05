@@ -49,13 +49,13 @@ Authentication Router - Reader Study MVP
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database import Reader, AuditLog
 from app.core.dependencies import get_db, get_current_active_reader
-from app.core.security import verify_password, create_access_token
+from app.core.security import verify_password, create_access_token, utc_now
 
 
 # =============================================================================
@@ -223,7 +223,7 @@ async def login(
     )
 
     # 마지막 로그인 시간 업데이트
-    reader.last_login_at = datetime.utcnow()
+    reader.last_login_at = utc_now()
     await db.commit()
     await db.refresh(reader)
 
@@ -274,3 +274,64 @@ async def get_current_user(
     Authorization 헤더의 JWT 토큰으로 인증된 사용자 정보를 반환합니다.
     """
     return ReaderResponse.model_validate(reader)
+
+
+# =============================================================================
+# 비밀번호 변경
+# =============================================================================
+
+class ChangePasswordRequest(BaseModel):
+    """비밀번호 변경 요청"""
+    current_password: str
+    new_password: str = Field(..., min_length=4, description="새 비밀번호 (최소 4자)")
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    password_data: ChangePasswordRequest,
+    request: Request,
+    reader: Reader = Depends(get_current_active_reader),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    비밀번호 변경
+
+    현재 비밀번호를 확인하고 새 비밀번호로 변경합니다.
+    모든 인증된 사용자(reader, admin)가 자신의 비밀번호를 변경할 수 있습니다.
+    """
+    from app.core.security import hash_password
+
+    # 현재 비밀번호 확인
+    if not verify_password(password_data.current_password, reader.password_hash):
+        await log_audit(
+            db=db,
+            action="PASSWORD_CHANGE_FAILED",
+            reader_id=reader.id,
+            request=request,
+            details='{"reason": "wrong_current_password"}'
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="현재 비밀번호가 올바르지 않습니다"
+        )
+
+    # 새 비밀번호가 현재와 같은지 확인
+    if password_data.current_password == password_data.new_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="새 비밀번호가 현재 비밀번호와 동일합니다"
+        )
+
+    # 비밀번호 변경
+    reader.password_hash = hash_password(password_data.new_password)
+    await db.commit()
+
+    # 감사 로그
+    await log_audit(
+        db=db,
+        action="PASSWORD_CHANGED",
+        reader_id=reader.id,
+        request=request
+    )
+
+    return MessageResponse(message="비밀번호가 변경되었습니다")
