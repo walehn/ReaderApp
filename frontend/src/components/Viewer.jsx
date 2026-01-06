@@ -41,7 +41,7 @@
  * ============================================================================
  */
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
 import SliceCanvas from './SliceCanvas'
 import NiiVueCanvas from './NiiVueCanvas'
 import { api } from '../services/api'
@@ -58,11 +58,26 @@ export function Viewer({
   currentSlice = 0,
   totalSlices = 0,
   onSliceChange,
-  wlPreset = 'liver',
+  wlPreset = 'soft',
   onToggleWL,
   aiAvailable = false,
 }) {
   const [showOverlay, setShowOverlay] = useState(false)
+
+  // 동시 스크롤 모드 상태 (기본값: ON)
+  const [syncScroll, setSyncScroll] = useState(true)
+
+  // Baseline/Followup 개별 슬라이스 상태
+  const [baselineSlice, setBaselineSlice] = useState(currentSlice)
+  const [followupSlice, setFollowupSlice] = useState(currentSlice)
+
+  // 외부 currentSlice 변경 시 개별 슬라이스도 동기화
+  useEffect(() => {
+    if (syncScroll) {
+      setBaselineSlice(currentSlice)
+      setFollowupSlice(currentSlice)
+    }
+  }, [currentSlice, syncScroll])
 
   // WebGL/NiiVue 지원 여부 확인 (한 번만 체크)
   const webglSupport = useMemo(() => checkNiiVueSupport(), [])
@@ -94,6 +109,24 @@ export function Viewer({
       onSliceChange(parseInt(e.target.value, 10))
     }
   }
+
+  // Baseline 슬라이스 변경 핸들러
+  const handleBaselineSliceChange = useCallback((slice) => {
+    setBaselineSlice(slice)
+    if (syncScroll) {
+      setFollowupSlice(slice)
+      onSliceChange?.(slice)
+    }
+  }, [syncScroll, onSliceChange])
+
+  // Followup 슬라이스 변경 핸들러
+  const handleFollowupSliceChange = useCallback((slice) => {
+    setFollowupSlice(slice)
+    if (syncScroll) {
+      setBaselineSlice(slice)
+      onSliceChange?.(slice)
+    }
+  }, [syncScroll, onSliceChange])
 
   // NiiVue용 병변 추가 핸들러 (복셀 좌표)
   const handleNiiVueAddLesion = useCallback((x, y, z) => {
@@ -141,21 +174,21 @@ export function Viewer({
             <NiiVueCanvas
               caseId={caseId}
               series="baseline"
-              currentSlice={currentSlice}
-              onSliceChange={onSliceChange}
+              currentSlice={syncScroll ? currentSlice : baselineSlice}
+              onSliceChange={handleBaselineSliceChange}
               wlPreset={wlPreset}
               lesions={[]}
               isInteractive={false}
-              label="Baseline"
+              label={`Baseline${!syncScroll ? ` (${baselineSlice + 1})` : ''}`}
             />
           ) : (
             <SliceCanvas
               imageUrl={baselineUrl}
               lesions={[]}
-              currentSlice={currentSlice}
+              currentSlice={syncScroll ? currentSlice : baselineSlice}
               onWheel={handleWheel}
               isInteractive={false}
-              label="Baseline"
+              label={`Baseline${!syncScroll ? ` (${baselineSlice + 1})` : ''}`}
             />
           )}
         </div>
@@ -166,13 +199,13 @@ export function Viewer({
             <NiiVueCanvas
               caseId={caseId}
               series="followup"
-              currentSlice={currentSlice}
-              onSliceChange={onSliceChange}
+              currentSlice={syncScroll ? currentSlice : followupSlice}
+              onSliceChange={handleFollowupSliceChange}
               wlPreset={wlPreset}
               lesions={lesions}
               onAddLesion={handleNiiVueAddLesion}
               isInteractive={true}
-              label="Follow-up"
+              label={`Follow-up${!syncScroll ? ` (${followupSlice + 1})` : ''}`}
               overlayUrl={overlayUrl}
               showOverlay={showOverlay && isAided}
               aiThreshold={aiThreshold}
@@ -183,11 +216,11 @@ export function Viewer({
               overlayUrl={overlayUrl}
               showOverlay={showOverlay && isAided}
               lesions={lesions}
-              currentSlice={currentSlice}
+              currentSlice={syncScroll ? currentSlice : followupSlice}
               onAddLesion={handleServerAddLesion}
               onWheel={handleWheel}
               isInteractive={true}
-              label="Follow-up"
+              label={`Follow-up${!syncScroll ? ` (${followupSlice + 1})` : ''}`}
             />
           )}
         </div>
@@ -255,6 +288,21 @@ export function Viewer({
               </button>
             </div>
           )}
+
+          {/* 동시 스크롤 토글 */}
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400 text-sm">동시 스크롤:</span>
+            <button
+              onClick={() => setSyncScroll(!syncScroll)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                syncScroll
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+            >
+              {syncScroll ? 'ON' : 'OFF'}
+            </button>
+          </div>
 
           {/* 마우스 휠 안내 */}
           <span className="text-gray-500 text-xs">

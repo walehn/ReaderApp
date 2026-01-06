@@ -328,10 +328,10 @@ export default function ViewerPage() {
           </p>
         </div>
 
-        {/* 메인 레이아웃 */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          {/* 뷰어 영역 (3/4) */}
-          <div className="lg:col-span-3">
+        {/* 메인 레이아웃 - 뷰어 전체 너비 */}
+        <div className="space-y-4">
+          {/* 뷰어 영역 (전체 너비) */}
+          <div className="w-full">
             {caseData.loading ? (
               <div className="flex items-center justify-center h-96 bg-medical-dark rounded-lg">
                 <div className="text-center">
@@ -362,9 +362,9 @@ export default function ViewerPage() {
             )}
           </div>
 
-          {/* 사이드바 (1/4) */}
-          <div className="space-y-4">
-            {/* 병변 마커 */}
+          {/* 하단 컨트롤 영역 (가로 배치) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* 병변 마커 (좌) */}
             <LesionMarker
               lesions={caseData.lesions}
               onUpdateConfidence={caseData.updateLesionConfidence}
@@ -372,7 +372,7 @@ export default function ViewerPage() {
               maxLesions={sessionInfo?.k_max || 3}
             />
 
-            {/* 입력 패널 */}
+            {/* 입력 패널 (중앙) */}
             <InputPanel
               patientDecision={patientDecision}
               onDecisionChange={setPatientDecision}
@@ -383,12 +383,14 @@ export default function ViewerPage() {
               timeElapsed={timer.formattedTime}
             />
 
-            {/* 에러 메시지 */}
-            {submitError && (
-              <div className="bg-red-900/30 border border-red-600 rounded-lg p-3">
-                <p className="text-red-400 text-sm">{submitError}</p>
-              </div>
-            )}
+            {/* 에러 메시지 (우) */}
+            <div className="flex items-center justify-center">
+              {submitError && (
+                <div className="bg-red-900/30 border border-red-600 rounded-lg p-3 w-full">
+                  <p className="text-red-400 text-sm">{submitError}</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

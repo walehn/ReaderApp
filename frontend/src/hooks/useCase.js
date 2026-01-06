@@ -26,7 +26,7 @@ import { api } from '../services/api'
 export function useCase(caseId, maxLesions = 3) {
   const [meta, setMeta] = useState(null)
   const [currentSlice, setCurrentSlice] = useState(0)
-  const [wlPreset, setWlPreset] = useState('liver')
+  const [wlPreset, setWlPreset] = useState('soft')
   const [lesions, setLesions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -119,7 +119,7 @@ export function useCase(caseId, maxLesions = 3) {
       setCurrentSlice(Math.floor(meta.slices / 2))
     }
     setLesions([])
-    setWlPreset('liver')
+    setWlPreset('soft')
   }, [meta])
 
   return {
