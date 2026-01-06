@@ -10,6 +10,7 @@
  *   - 동기화된 Z-slice 스크롤
  *   - Window/Level 프리셋 토글
  *   - AI 오버레이 (AIDED 모드)
+ *   - 하이브리드 렌더링: WebGL(NiiVue) 또는 서버 사이드(PNG) 자동 선택
  *
  * Props:
  *   - caseId: 현재 케이스 ID
@@ -26,9 +27,13 @@
  *   - onToggleWL: W/L 토글 콜백
  *   - aiAvailable: AI 데이터 존재 여부
  *
+ * 렌더링 모드:
+ *   - WebGL (NiiVue): WebGL2 지원 시 자동 선택, 슬라이스 변경 ~1-5ms
+ *   - Server (PNG): WebGL 미지원 시 폴백, 슬라이스 변경 ~70-150ms
+ *
  * 사용 예시:
  *   <Viewer
- *     caseId="case_0001"
+ *     caseId="pos_enriched_001_10667525"
  *     readerId="R01"
  *     sessionId="S1"
  *     isAided={true}
@@ -36,9 +41,11 @@
  * ============================================================================
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import SliceCanvas from './SliceCanvas'
+import NiiVueCanvas from './NiiVueCanvas'
 import { api } from '../services/api'
+import { checkNiiVueSupport } from '../utils/webgl'
 
 export function Viewer({
   caseId,
@@ -57,7 +64,11 @@ export function Viewer({
 }) {
   const [showOverlay, setShowOverlay] = useState(false)
 
-  // 슬라이스 URL 생성
+  // WebGL/NiiVue 지원 여부 확인 (한 번만 체크)
+  const webglSupport = useMemo(() => checkNiiVueSupport(), [])
+  const useWebGL = webglSupport.supported
+
+  // 서버 렌더링용 슬라이스 URL (WebGL 미지원 시 폴백)
   const baselineUrl = caseId
     ? api.getSliceUrl(caseId, 'baseline', currentSlice, wlPreset)
     : null
@@ -70,9 +81,9 @@ export function Viewer({
     ? api.getOverlayUrl(caseId, currentSlice, readerId, sessionId, aiThreshold)
     : null
 
-  // 마우스 휠로 슬라이스 변경
+  // 마우스 휠로 슬라이스 변경 (서버 렌더링용)
   const handleWheel = useCallback((delta) => {
-    if (!onSliceChange) return
+    if (!onSliceChange || totalSlices === 0) return
     const newSlice = currentSlice + (delta > 0 ? -1 : 1)
     onSliceChange(Math.max(0, Math.min(newSlice, totalSlices - 1)))
   }, [currentSlice, totalSlices, onSliceChange])
@@ -84,6 +95,21 @@ export function Viewer({
     }
   }
 
+  // NiiVue용 병변 추가 핸들러 (복셀 좌표)
+  const handleNiiVueAddLesion = useCallback((x, y, z) => {
+    if (onAddLesion) {
+      onAddLesion(x, y, z)
+    }
+  }, [onAddLesion])
+
+  // 서버 렌더링용 병변 추가 핸들러 (캔버스 좌표)
+  const handleServerAddLesion = useCallback((x, y) => {
+    if (onAddLesion) {
+      // 서버 렌더링에서는 z 좌표가 currentSlice
+      onAddLesion(x, y, currentSlice)
+    }
+  }, [onAddLesion, currentSlice])
+
   if (!caseId) {
     return (
       <div className="flex items-center justify-center h-96 bg-medical-darker rounded-lg">
@@ -94,33 +120,76 @@ export function Viewer({
 
   return (
     <div className="space-y-4">
+      {/* 렌더링 모드 표시 */}
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span>
+          렌더링: {useWebGL ? (
+            <span className="text-green-400">WebGL (NiiVue)</span>
+          ) : (
+            <span className="text-yellow-400">Server (PNG)</span>
+          )}
+          {!webglSupport.supported && ' [WebGL2 미지원]'}
+          {webglSupport.supported && !webglSupport.optimal && ' [최적화 제한]'}
+        </span>
+      </div>
+
       {/* 2-up 뷰어 */}
       <div className="grid grid-cols-2 gap-4">
         {/* Baseline (좌) */}
         <div className="space-y-2">
-          <SliceCanvas
-            imageUrl={baselineUrl}
-            lesions={[]} // Baseline에는 병변 표시 안함
-            currentSlice={currentSlice}
-            onWheel={handleWheel}
-            isInteractive={false}
-            label="Baseline"
-          />
+          {useWebGL ? (
+            <NiiVueCanvas
+              caseId={caseId}
+              series="baseline"
+              currentSlice={currentSlice}
+              onSliceChange={onSliceChange}
+              wlPreset={wlPreset}
+              lesions={[]}
+              isInteractive={false}
+              label="Baseline"
+            />
+          ) : (
+            <SliceCanvas
+              imageUrl={baselineUrl}
+              lesions={[]}
+              currentSlice={currentSlice}
+              onWheel={handleWheel}
+              isInteractive={false}
+              label="Baseline"
+            />
+          )}
         </div>
 
         {/* Followup (우) */}
         <div className="space-y-2">
-          <SliceCanvas
-            imageUrl={followupUrl}
-            overlayUrl={overlayUrl}
-            showOverlay={showOverlay && isAided}
-            lesions={lesions}
-            currentSlice={currentSlice}
-            onAddLesion={onAddLesion}
-            onWheel={handleWheel}
-            isInteractive={true}
-            label="Follow-up"
-          />
+          {useWebGL ? (
+            <NiiVueCanvas
+              caseId={caseId}
+              series="followup"
+              currentSlice={currentSlice}
+              onSliceChange={onSliceChange}
+              wlPreset={wlPreset}
+              lesions={lesions}
+              onAddLesion={handleNiiVueAddLesion}
+              isInteractive={true}
+              label="Follow-up"
+              overlayUrl={overlayUrl}
+              showOverlay={showOverlay && isAided}
+              aiThreshold={aiThreshold}
+            />
+          ) : (
+            <SliceCanvas
+              imageUrl={followupUrl}
+              overlayUrl={overlayUrl}
+              showOverlay={showOverlay && isAided}
+              lesions={lesions}
+              currentSlice={currentSlice}
+              onAddLesion={handleServerAddLesion}
+              onWheel={handleWheel}
+              isInteractive={true}
+              label="Follow-up"
+            />
+          )}
         </div>
       </div>
 
@@ -132,13 +201,14 @@ export function Viewer({
           <input
             type="range"
             min={0}
-            max={totalSlices - 1}
+            max={Math.max(0, totalSlices - 1)}
             value={currentSlice}
             onChange={handleSliderChange}
-            className="flex-1 accent-primary-500"
+            disabled={totalSlices === 0}
+            className="flex-1 accent-primary-500 disabled:opacity-50"
           />
           <span className="text-white font-mono text-sm w-24 text-right">
-            {currentSlice + 1} / {totalSlices}
+            {totalSlices > 0 ? `${currentSlice + 1} / ${totalSlices}` : '로딩 중...'}
           </span>
         </div>
 

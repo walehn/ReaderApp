@@ -59,7 +59,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models.database import init_db
-from app.routers import case, render, study, admin, auth, sessions, readers
+from app.routers import case, render, study, admin, auth, sessions, readers, nifti
 from app.routers import study_config, dashboard  # 연구 설정 및 대시보드 (MVP)
 from app.config import settings
 from app.core.middleware import (
@@ -127,6 +127,7 @@ app.include_router(auth.router)
 # 기능 라우터
 app.include_router(case.router)
 app.include_router(render.router)
+app.include_router(nifti.router)         # NIfTI 파일 직접 스트리밍 (WebGL용)
 app.include_router(study.router)
 app.include_router(sessions.router)      # DB 기반 세션 관리 (Phase 3)
 app.include_router(readers.router)       # 리더 관리 (Phase 5)

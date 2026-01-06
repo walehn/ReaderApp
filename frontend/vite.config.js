@@ -26,11 +26,21 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Cross-Origin Isolation 헤더 (NiiVue SharedArrayBuffer 지원용)
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp'
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
+      },
+      // NIfTI 파일 프록시 (CORS 문제 방지)
+      '/nifti': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
       }
     }
   },

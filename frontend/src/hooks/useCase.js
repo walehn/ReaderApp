@@ -73,17 +73,22 @@ export function useCase(caseId, maxLesions = 3) {
   }, [])
 
   // 병변 추가
-  const addLesion = useCallback((x, y, confidence = 'probable') => {
+  // NiiVue (WebGL): addLesion(x, y, z, confidence) - 복셀 좌표
+  // Server (PNG): addLesion(x, y, z) - z는 현재 슬라이스, x/y는 캔버스 픽셀
+  const addLesion = useCallback((x, y, z = null, confidence = 'probable') => {
     if (lesions.length >= maxLesions) {
       console.warn(`Maximum ${maxLesions} lesions allowed`)
       return false
     }
 
+    // z가 제공되지 않으면 currentSlice 사용 (서버 렌더링 호환)
+    const sliceZ = z !== null ? z : currentSlice
+
     const newLesion = {
       id: Date.now(), // 임시 ID
       x,
       y,
-      z: currentSlice,
+      z: sliceZ,
       confidence,
     }
 

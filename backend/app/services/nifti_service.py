@@ -10,6 +10,11 @@ NIfTI Service - Reader Study MVP
   - render_slice(): 특정 Z 슬라이스를 PNG로 렌더링
   - render_overlay(): AI 확률맵 오버레이 렌더링
 
+케이스 ID 형식:
+  - Legacy: "case_0001" (cases 폴더)
+  - Dataset: "pos_enriched_001_10667525" (dataset/positive)
+  - Dataset: "neg_008_11155933" (dataset/negative)
+
 Window/Level 프리셋:
   - liver: WW=150, WL=50 (간 조직 최적화)
   - soft:  WW=400, WL=40 (연부 조직)
@@ -19,6 +24,7 @@ Window/Level 프리셋:
 
   service = NIfTIService()
   meta = await service.get_case_metadata("case_0001")
+  meta = await service.get_case_metadata("pos_enriched_001_10667525")
   png = await service.render_slice("case_0001", "followup", 50, "liver")
 ============================================================================
 """
@@ -49,8 +55,94 @@ class NIfTIService:
 
     def __init__(self):
         self.cases_dir = settings.CASES_DIR
+        self.dataset_dir = settings.DATASET_DIR
+        self.positive_dir = settings.POSITIVE_DIR
+        self.negative_dir = settings.NEGATIVE_DIR
+        self.ai_label_dir = settings.AI_LABEL_DIR
         self.wl_presets = settings.WL_PRESETS
         self.jpeg_quality = settings.JPEG_QUALITY
+
+    # =========================================================================
+    # 파일 경로 매핑
+    # =========================================================================
+
+    def _get_volume_filepath(self, case_id: str, series: str) -> Optional[Path]:
+        """
+        케이스 ID와 시리즈로 NIfTI 파일 경로 반환
+
+        Args:
+            case_id: 케이스 ID
+            series: "baseline" | "followup"
+
+        Returns:
+            파일 경로 또는 None
+        """
+        # Legacy 케이스 (cases 폴더)
+        if case_id.startswith("case_"):
+            filepath = self.cases_dir / case_id / f"{series}.nii.gz"
+            if filepath.exists():
+                return filepath
+            return None
+
+        # Dataset positive 케이스
+        if case_id.startswith("pos_"):
+            # pos_enriched_001_10667525 -> enriched_001_10667525
+            base_id = case_id[4:]  # "pos_" 제거
+            # dataset/positive/에서 매칭되는 파일 찾기
+            for file_path in self.positive_dir.iterdir():
+                if file_path.name.startswith(base_id) and series in file_path.name:
+                    # _0000.nii.gz 파일 제외 (nnU-Net 포맷)
+                    if "_0000.nii.gz" not in file_path.name:
+                        return file_path
+            return None
+
+        # Dataset negative 케이스
+        if case_id.startswith("neg_"):
+            # neg_008_11155933 -> neg_008_11155933
+            for file_path in self.negative_dir.iterdir():
+                if file_path.name.startswith(case_id) and series in file_path.name:
+                    return file_path
+            return None
+
+        return None
+
+    def _get_ai_prob_filepath(self, case_id: str) -> Optional[Path]:
+        """
+        케이스 ID로 AI 확률맵 파일 경로 반환
+
+        Args:
+            case_id: 케이스 ID
+
+        Returns:
+            파일 경로 또는 None
+        """
+        # Legacy 케이스
+        if case_id.startswith("case_"):
+            filepath = self.cases_dir / case_id / "ai_prob.nii.gz"
+            if filepath.exists():
+                return filepath
+            return None
+
+        # Dataset positive
+        if case_id.startswith("pos_"):
+            base_id = case_id[4:]
+            ai_dir = self.ai_label_dir / "positive"
+            if ai_dir.exists():
+                for file_path in ai_dir.iterdir():
+                    if base_id in file_path.name:
+                        return file_path
+            return None
+
+        # Dataset negative
+        if case_id.startswith("neg_"):
+            ai_dir = self.ai_label_dir / "negative"
+            if ai_dir.exists():
+                for file_path in ai_dir.iterdir():
+                    if case_id in file_path.name:
+                        return file_path
+            return None
+
+        return None
 
     # =========================================================================
     # 볼륨 로딩
@@ -70,7 +162,7 @@ class NIfTIService:
         NIfTI 볼륨 로드 (캐시 우선)
 
         Args:
-            case_id: 케이스 ID (예: "case_0001")
+            case_id: 케이스 ID (예: "case_0001", "pos_enriched_001_...", "neg_008_...")
             series: 시리즈 종류 ("baseline" | "followup")
 
         Returns:
@@ -81,9 +173,10 @@ class NIfTIService:
         if cached is not None:
             return cached
 
-        filepath = self.cases_dir / case_id / f"{series}.nii.gz"
-        if not filepath.exists():
-            raise FileNotFoundError(f"NIfTI file not found: {filepath}")
+        # 파일 경로 매핑
+        filepath = self._get_volume_filepath(case_id, series)
+        if filepath is None or not filepath.exists():
+            raise FileNotFoundError(f"NIfTI file not found for case: {case_id}, series: {series}")
 
         # 비동기로 파일 로드
         loop = asyncio.get_event_loop()
@@ -103,8 +196,9 @@ class NIfTIService:
         if cached is not None:
             return cached
 
-        filepath = self.cases_dir / case_id / "ai_prob.nii.gz"
-        if not filepath.exists():
+        # 파일 경로 매핑
+        filepath = self._get_ai_prob_filepath(case_id)
+        if filepath is None or not filepath.exists():
             return None
 
         loop = asyncio.get_event_loop()
@@ -123,19 +217,23 @@ class NIfTIService:
         """
         케이스 메타데이터 조회
 
+        Args:
+            case_id: 케이스 ID (예: "case_0001", "pos_enriched_001_...", "neg_008_...")
+
         Returns:
             CaseMeta: shape, slices, spacing, ai_available
         """
-        case_dir = self.cases_dir / case_id
-        if not case_dir.exists():
+        # 파일 경로 확인
+        filepath = self._get_volume_filepath(case_id, "followup")
+        if filepath is None:
             raise FileNotFoundError(f"Case not found: {case_id}")
 
         # followup 볼륨 기준으로 메타데이터 추출
         data, spacing = await self.load_volume(case_id, "followup")
 
         # AI 확률맵 존재 여부
-        ai_prob_path = case_dir / "ai_prob.nii.gz"
-        ai_available = ai_prob_path.exists()
+        ai_prob_path = self._get_ai_prob_filepath(case_id)
+        ai_available = ai_prob_path is not None and ai_prob_path.exists()
 
         return CaseMeta(
             case_id=case_id,

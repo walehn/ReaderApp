@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     SESSIONS_DIR: Path = PROJECT_ROOT / "sessions"
     RESULTS_DIR: Path = PROJECT_ROOT / "results"
 
+    # Dataset 디렉토리 (실제 NIfTI 파일 저장소)
+    DATASET_DIR: Path = PROJECT_ROOT / "dataset"
+    POSITIVE_DIR: Path = DATASET_DIR / "positive"
+    NEGATIVE_DIR: Path = DATASET_DIR / "negative"
+    AI_LABEL_DIR: Path = DATASET_DIR / "LabelAI"
+
     # 서버 설정
     HOST: str = "0.0.0.0"
     PORT: int = 8000
