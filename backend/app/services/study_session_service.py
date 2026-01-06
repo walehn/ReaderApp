@@ -176,6 +176,9 @@ class StudySessionService:
             config_service = StudyConfigService(self.db)
             await config_service.trigger_lock_if_needed(reader_id)
 
+            # 세션 객체 새로고침 (trigger_lock 내부 commit으로 인해 만료됨)
+            await self.db.refresh(session)
+
             # 케이스 순서 랜덤 셔플
             shuffled_a = block_a_cases.copy()
             shuffled_b = block_b_cases.copy()
