@@ -11,10 +11,10 @@ Study Router - Reader Study MVP
 
 결과 제출 데이터:
   {
-    "reader_id": "R01",
-    "session_id": "S1",
+    "reader_id": "RAD01",      <- reader_code
+    "session_id": "S1",        <- session_code
     "mode": "UNAIDED",
-    "case_id": "case_0001",
+    "case_id": "pos_enriched_001_10667525",
     "patient_new_met_present": true,
     "lesions": [
       {"x": 123, "y": 88, "z": 45, "confidence": "probable"}
@@ -29,9 +29,11 @@ Study Router - Reader Study MVP
 ============================================================================
 """
 
+import json
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.models.schemas import (
     StudySubmission,
@@ -39,8 +41,7 @@ from app.models.schemas import (
     SessionConfig,
     SessionState
 )
-from app.models.database import get_db, StudyResult, LesionMark
-from app.services.session_service import session_service
+from app.models.database import get_db, StudyResult, LesionMark, Reader, StudySession
 from app.config import settings
 
 router = APIRouter(prefix="/study", tags=["Study"])
@@ -52,48 +53,87 @@ async def submit_result(
     db: AsyncSession = Depends(get_db)
 ) -> StudySubmissionResponse:
     """
-    Reader Study 결과 제출
+    Reader Study 결과 제출 (DB 기반)
 
     Parameters:
         submission: 결과 데이터
+          - reader_id: reader_code (예: "RAD01")
+          - session_id: session_code (예: "S1")
 
     Returns:
         성공 여부 및 result_id
     """
-    # 세션 설정 로드 및 검증
-    try:
-        config = session_service.load_session(
-            submission.reader_id,
-            submission.session_id
+    # 1. Reader 조회 (reader_code로)
+    reader_result = await db.execute(
+        select(Reader).where(Reader.reader_code == submission.reader_id)
+    )
+    reader = reader_result.scalar_one_or_none()
+
+    if reader is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Reader not found: {submission.reader_id}"
         )
-    except FileNotFoundError:
+
+    # 2. Session 조회 (reader_id + session_code로)
+    session_result = await db.execute(
+        select(StudySession)
+        .options(selectinload(StudySession.progress))
+        .where(
+            StudySession.reader_id == reader.id,
+            StudySession.session_code == submission.session_id
+        )
+    )
+    session = session_result.scalar_one_or_none()
+
+    if session is None:
         raise HTTPException(
             status_code=404,
             detail=f"Session not found: {submission.reader_id}_{submission.session_id}"
         )
 
+    # 3. 현재 블록의 모드 확인
+    progress = session.progress
+    if progress is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Session has not been started"
+        )
+
+    current_block = progress.current_block
+    if current_block == "A":
+        expected_mode = session.block_a_mode
+    else:
+        expected_mode = session.block_b_mode
+
     # 모드 일치 검증
-    if submission.mode != config.mode:
+    if submission.mode != expected_mode:
         raise HTTPException(
             status_code=400,
-            detail=f"Mode mismatch: expected {config.mode}, got {submission.mode}"
+            detail=f"Mode mismatch: expected {expected_mode}, got {submission.mode}"
         )
 
-    # 케이스 ID 검증
-    if submission.case_id not in config.case_ids:
+    # 4. 케이스 ID가 현재 블록에 포함되는지 검증
+    if current_block == "A":
+        case_order = json.loads(session.case_order_block_a) if session.case_order_block_a else []
+    else:
+        case_order = json.loads(session.case_order_block_b) if session.case_order_block_b else []
+
+    if submission.case_id not in case_order:
         raise HTTPException(
             status_code=400,
-            detail=f"Case {submission.case_id} not in session case list"
+            detail=f"Case {submission.case_id} not in current block case list"
         )
 
-    # 병변 수 검증
-    if len(submission.lesions) > config.k_max:
+    # 5. 병변 수 검증 (k_max 기본값 3)
+    k_max = settings.K_MAX if hasattr(settings, 'K_MAX') else 3
+    if len(submission.lesions) > k_max:
         raise HTTPException(
             status_code=400,
-            detail=f"Too many lesions: max {config.k_max}, got {len(submission.lesions)}"
+            detail=f"Too many lesions: max {k_max}, got {len(submission.lesions)}"
         )
 
-    # 중복 제출 확인
+    # 6. 중복 제출 확인
     existing = await db.execute(
         select(StudyResult).where(
             StudyResult.reader_id == submission.reader_id,
@@ -107,7 +147,7 @@ async def submit_result(
             detail=f"Result already submitted for {submission.case_id}"
         )
 
-    # 결과 저장
+    # 7. 결과 저장
     result = StudyResult(
         reader_id=submission.reader_id,
         session_id=submission.session_id,
@@ -119,7 +159,7 @@ async def submit_result(
     db.add(result)
     await db.flush()  # ID 획득
 
-    # 병변 마커 저장
+    # 8. 병변 마커 저장
     for i, lesion in enumerate(submission.lesions):
         mark = LesionMark(
             result_id=result.id,
@@ -133,12 +173,7 @@ async def submit_result(
 
     await db.commit()
 
-    # 세션 진행 상황 업데이트
-    session_service.update_session_progress(
-        submission.reader_id,
-        submission.session_id,
-        submission.case_id
-    )
+    # 세션 진행 상황은 /sessions/{id}/advance API에서 처리
 
     return StudySubmissionResponse(
         success=True,
@@ -147,51 +182,134 @@ async def submit_result(
     )
 
 
-@router.get("/session", response_model=SessionConfig)
+@router.get("/session")
 async def get_session_config(
     reader_id: str,
-    session_id: str
-) -> SessionConfig:
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
     """
-    세션 설정 조회
+    세션 설정 조회 (DB 기반)
 
     Parameters:
-        reader_id: Reader ID
-        session_id: Session ID
+        reader_id: reader_code (예: "RAD01")
+        session_id: session_code (예: "S1")
 
     Returns:
-        SessionConfig
+        SessionConfig 형식의 데이터
     """
-    try:
-        config = session_service.load_session(reader_id, session_id)
-        return config
-    except FileNotFoundError:
+    # Reader 조회
+    reader_result = await db.execute(
+        select(Reader).where(Reader.reader_code == reader_id)
+    )
+    reader = reader_result.scalar_one_or_none()
+
+    if reader is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Reader not found: {reader_id}"
+        )
+
+    # Session 조회
+    session_result = await db.execute(
+        select(StudySession)
+        .options(selectinload(StudySession.progress))
+        .where(
+            StudySession.reader_id == reader.id,
+            StudySession.session_code == session_id
+        )
+    )
+    session = session_result.scalar_one_or_none()
+
+    if session is None:
         raise HTTPException(
             status_code=404,
             detail=f"Session not found: {reader_id}_{session_id}"
         )
 
+    # SessionConfig 형식으로 반환
+    return {
+        "reader_id": reader_id,
+        "session_id": session_id,
+        "mode": session.block_a_mode if session.progress and session.progress.current_block == "A" else session.block_b_mode,
+        "case_order": json.loads(session.case_order_block_a) if session.progress and session.progress.current_block == "A" else json.loads(session.case_order_block_b) if session.case_order_block_b else []
+    }
 
-@router.get("/progress", response_model=SessionState)
+
+@router.get("/progress")
 async def get_session_progress(
     reader_id: str,
-    session_id: str
-) -> SessionState:
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
     """
-    세션 진행 상황 조회
+    세션 진행 상황 조회 (DB 기반)
 
     Parameters:
-        reader_id: Reader ID
-        session_id: Session ID
+        reader_id: reader_code (예: "RAD01")
+        session_id: session_code (예: "S1")
 
     Returns:
         SessionState (현재 케이스, 완료된 케이스 목록)
     """
-    try:
-        state = session_service.get_session_state(reader_id, session_id)
-        return state
-    except FileNotFoundError:
+    # Reader 조회
+    reader_result = await db.execute(
+        select(Reader).where(Reader.reader_code == reader_id)
+    )
+    reader = reader_result.scalar_one_or_none()
+
+    if reader is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Reader not found: {reader_id}"
+        )
+
+    # Session 조회
+    session_result = await db.execute(
+        select(StudySession)
+        .options(selectinload(StudySession.progress))
+        .where(
+            StudySession.reader_id == reader.id,
+            StudySession.session_code == session_id
+        )
+    )
+    session = session_result.scalar_one_or_none()
+
+    if session is None:
         raise HTTPException(
             status_code=404,
             detail=f"Session not found: {reader_id}_{session_id}"
         )
+
+    progress = session.progress
+    if progress is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Session has not been started"
+        )
+
+    # 현재 블록의 케이스 목록
+    if progress.current_block == "A":
+        case_order = json.loads(session.case_order_block_a) if session.case_order_block_a else []
+    else:
+        case_order = json.loads(session.case_order_block_b) if session.case_order_block_b else []
+
+    # 완료된 케이스 목록 (StudyResult에서 조회)
+    completed_result = await db.execute(
+        select(StudyResult.case_id).where(
+            StudyResult.reader_id == reader_id,
+            StudyResult.session_id == session_id
+        )
+    )
+    completed_cases = [row[0] for row in completed_result.fetchall()]
+
+    # 현재 케이스 인덱스 계산
+    current_case_index = progress.current_case_index
+
+    return {
+        "current_case": case_order[current_case_index] if current_case_index < len(case_order) else None,
+        "current_index": current_case_index,
+        "total_cases": len(case_order),
+        "completed_cases": completed_cases,
+        "current_block": progress.current_block
+    }

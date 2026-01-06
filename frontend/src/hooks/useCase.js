@@ -23,10 +23,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
 
+// W/L 프리셋 정의
+const WL_PRESETS = {
+  liver: { center: 50, width: 150 },
+  soft: { center: 40, width: 400 }
+}
+
 export function useCase(caseId, maxLesions = 3) {
   const [meta, setMeta] = useState(null)
   const [currentSlice, setCurrentSlice] = useState(0)
   const [wlPreset, setWlPreset] = useState('soft')
+  // 커스텀 W/L 값 (드래그로 조정 시 사용)
+  const [customWL, setCustomWLState] = useState({ center: 40, width: 400 })
+  // W/L 모드: 'preset' (버튼) 또는 'custom' (드래그)
+  const [wlMode, setWlMode] = useState('preset')
   const [lesions, setLesions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -69,8 +79,28 @@ export function useCase(caseId, maxLesions = 3) {
 
   // W/L 프리셋 토글
   const toggleWL = useCallback(() => {
-    setWlPreset(prev => prev === 'liver' ? 'soft' : 'liver')
+    setWlPreset(prev => {
+      const newPreset = prev === 'liver' ? 'soft' : 'liver'
+      // 프리셋 선택 시 커스텀 W/L도 해당 값으로 업데이트
+      setCustomWLState(WL_PRESETS[newPreset])
+      setWlMode('preset')
+      return newPreset
+    })
   }, [])
+
+  // 커스텀 W/L 설정 (드래그로 조정 시)
+  const setCustomWL = useCallback((center, width) => {
+    setCustomWLState({ center, width })
+    setWlMode('custom')
+  }, [])
+
+  // 현재 유효한 W/L 값 계산
+  const getCurrentWL = useCallback(() => {
+    if (wlMode === 'preset') {
+      return WL_PRESETS[wlPreset]
+    }
+    return customWL
+  }, [wlMode, wlPreset, customWL])
 
   // 병변 추가
   // NiiVue (WebGL): addLesion(x, y, z, confidence) - 복셀 좌표
@@ -128,6 +158,9 @@ export function useCase(caseId, maxLesions = 3) {
     currentSlice,
     totalSlices: meta?.slices || 0,
     wlPreset,
+    wlMode,
+    customWL,
+    getCurrentWL,
     lesions,
     aiAvailable: meta?.ai_available || false,
     loading,
@@ -135,6 +168,7 @@ export function useCase(caseId, maxLesions = 3) {
     setSlice,
     handleWheelSlice,
     toggleWL,
+    setCustomWL,
     addLesion,
     removeLesion,
     updateLesionConfidence,

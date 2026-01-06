@@ -189,21 +189,31 @@ class StudySessionService:
             session.case_order_block_b = json.dumps(shuffled_b)
             session.status = "in_progress"
 
-            # 진행 상태 생성
-            new_progress = SessionProgress(
-                session_id=session.id,
-                current_block="A",
-                current_case_index=0,
-                completed_cases="[]",
-                started_at=utc_now(),
-                last_accessed_at=utc_now()
+            # 기존 진행 상태 확인 (이전 시도에서 생성되었을 수 있음)
+            existing_progress_result = await self.db.execute(
+                select(SessionProgress).where(SessionProgress.session_id == session.id)
             )
-            self.db.add(new_progress)
-            await self.db.commit()
-            await self.db.refresh(new_progress)
+            existing_progress = existing_progress_result.scalar_one_or_none()
 
-            # 진행 상태 직접 사용
-            progress = new_progress
+            if existing_progress is None:
+                # 진행 상태 새로 생성
+                new_progress = SessionProgress(
+                    session_id=session.id,
+                    current_block="A",
+                    current_case_index=0,
+                    completed_cases="[]",
+                    started_at=utc_now(),
+                    last_accessed_at=utc_now()
+                )
+                self.db.add(new_progress)
+                await self.db.commit()
+                await self.db.refresh(new_progress)
+                progress = new_progress
+            else:
+                # 기존 진행 상태 재사용
+                existing_progress.last_accessed_at = utc_now()
+                await self.db.commit()
+                progress = existing_progress
             current_block = "A"
             current_index = 0
         else:
@@ -421,12 +431,11 @@ class StudySessionService:
         if reader.group is None:
             raise ValueError("리더의 그룹이 설정되지 않았습니다")
 
-        # Crossover 매핑에서 Block/Mode 결정
-        mapping_key = (reader.group, session_code)
-        if mapping_key not in CROSSOVER_MAPPING:
-            raise ValueError(f"잘못된 그룹/세션 조합: {mapping_key}")
-
-        block_a_mode, block_b_mode = CROSSOVER_MAPPING[mapping_key]
+        # DB 설정에서 Block/Mode 결정 (동적 세션/그룹 지원)
+        config_service = StudyConfigService(self.db)
+        block_a_mode, block_b_mode = await config_service.get_block_modes_from_config(
+            reader.group, session_code
+        )
 
         # 중복 확인
         existing = await self.db.execute(

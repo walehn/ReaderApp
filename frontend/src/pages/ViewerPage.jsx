@@ -317,10 +317,10 @@ export default function ViewerPage() {
           sessionInfo={`${sessionInfo?.session_code} - Block ${currentCase.block}`}
         />
 
-        {/* 케이스 ID 표시 */}
+        {/* 케이스 ID 표시 - 개인정보 보호를 위해 단순 번호만 표시 */}
         <div className="text-center">
           <h2 className="text-xl font-bold text-white">
-            {currentCase.case_id}
+            Case {String(currentCase.case_index + 1).padStart(3, '0')}
           </h2>
           <p className="text-sm text-gray-500">
             Block {currentCase.block} • 케이스 {currentCase.case_index + 1} / {currentCase.total_cases_in_block}
@@ -358,39 +358,46 @@ export default function ViewerPage() {
                 wlPreset={caseData.wlPreset}
                 onToggleWL={caseData.toggleWL}
                 aiAvailable={caseData.aiAvailable}
+                customWL={caseData.customWL}
+                onWLChange={caseData.setCustomWL}
+                wlMode={caseData.wlMode}
               />
             )}
           </div>
 
-          {/* 하단 컨트롤 영역 (가로 배치) */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* 병변 마커 (좌) */}
-            <LesionMarker
-              lesions={caseData.lesions}
-              onUpdateConfidence={caseData.updateLesionConfidence}
-              onRemove={caseData.removeLesion}
-              maxLesions={sessionInfo?.k_max || 3}
-            />
+          {/* 하단 컨트롤 영역 (가운데 정렬) */}
+          <div className="flex flex-col lg:flex-row justify-center items-start gap-4">
+            {/* 병변 마커 */}
+            <div className="w-full lg:w-auto lg:min-w-[320px]">
+              <LesionMarker
+                lesions={caseData.lesions}
+                onUpdateConfidence={caseData.updateLesionConfidence}
+                onRemove={caseData.removeLesion}
+                maxLesions={sessionInfo?.k_max || 3}
+              />
+            </div>
 
-            {/* 입력 패널 (중앙) */}
-            <InputPanel
-              patientDecision={patientDecision}
-              onDecisionChange={setPatientDecision}
-              lesionCount={caseData.lesions.length}
-              onSubmit={handleSubmit}
-              onClearLesions={caseData.clearLesions}
-              isSubmitting={isSubmitting}
-              timeElapsed={timer.formattedTime}
-            />
+            {/* 입력 패널 */}
+            <div className="w-full lg:w-auto lg:min-w-[280px]">
+              <InputPanel
+                patientDecision={patientDecision}
+                onDecisionChange={setPatientDecision}
+                lesionCount={caseData.lesions.length}
+                onSubmit={handleSubmit}
+                onClearLesions={caseData.clearLesions}
+                isSubmitting={isSubmitting}
+                timeElapsed={timer.formattedTime}
+              />
+            </div>
 
-            {/* 에러 메시지 (우) */}
-            <div className="flex items-center justify-center">
-              {submitError && (
-                <div className="bg-red-900/30 border border-red-600 rounded-lg p-3 w-full">
+            {/* 에러 메시지 */}
+            {submitError && (
+              <div className="w-full lg:w-auto lg:max-w-[300px]">
+                <div className="bg-red-900/30 border border-red-600 rounded-lg p-3">
                   <p className="text-red-400 text-sm">{submitError}</p>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

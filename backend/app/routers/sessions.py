@@ -115,7 +115,7 @@ class AdvanceCaseRequest(BaseModel):
 class SessionAssignRequest(BaseModel):
     """세션 할당 요청 (관리자용)"""
     reader_id: int
-    session_code: str = Field(..., pattern="^S[12]$", description="S1 또는 S2")
+    session_code: str = Field(..., pattern="^S([1-9]|1[0-9]|20)$", description="S1~S20")
     k_max: int = Field(default=3, ge=1, le=10)
     ai_threshold: float = Field(default=0.30, ge=0.0, le=1.0)
 

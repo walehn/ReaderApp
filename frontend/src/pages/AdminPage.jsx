@@ -132,6 +132,10 @@ export default function AdminPage() {
         ai_threshold: data.ai_threshold || 0.30,
         k_max: data.k_max || 3,
         require_lesion_marking: data.require_lesion_marking ?? true,
+        // 구조 설정 (잠금 전에만 수정 가능)
+        total_sessions: data.total_sessions || 2,
+        total_blocks: data.total_blocks || 2,
+        total_groups: data.total_groups || 2,
       })
     } catch (err) {
       setError(err.message)
@@ -373,6 +377,22 @@ export default function AdminPage() {
     }
   }
 
+  // 리더 재활성화
+  const handleReactivateReader = async (readerId) => {
+    if (!confirm('이 리더를 재활성화하시겠습니까?')) return
+    try {
+      setLoading(true)
+      setError(null)
+      await adminApi.updateReader(getToken(), readerId, { is_active: true })
+      setSuccessMessage('리더가 재활성화되었습니다')
+      loadReaders()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
     await logout()
     navigate('/', { replace: true })
@@ -539,15 +559,48 @@ export default function AdminPage() {
                   <div className="space-y-4">
                     <div className="flex justify-between items-center py-2 border-b border-gray-700">
                       <span className="text-gray-400">총 세션 수</span>
-                      <span className="text-white font-medium">{studyConfig.total_sessions}</span>
+                      {isEditingConfig && !studyConfig.is_locked ? (
+                        <input
+                          type="number"
+                          min="1"
+                          max="20"
+                          value={configForm.total_sessions}
+                          onChange={e => setConfigForm({...configForm, total_sessions: parseInt(e.target.value) || 1})}
+                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                        />
+                      ) : (
+                        <span className="text-white font-medium">{studyConfig.total_sessions}</span>
+                      )}
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-gray-700">
                       <span className="text-gray-400">세션당 블록 수</span>
-                      <span className="text-white font-medium">{studyConfig.total_blocks}</span>
+                      {isEditingConfig && !studyConfig.is_locked ? (
+                        <input
+                          type="number"
+                          min="1"
+                          max="4"
+                          value={configForm.total_blocks}
+                          onChange={e => setConfigForm({...configForm, total_blocks: parseInt(e.target.value) || 1})}
+                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                        />
+                      ) : (
+                        <span className="text-white font-medium">{studyConfig.total_blocks}</span>
+                      )}
                     </div>
                     <div className="flex justify-between items-center py-2 border-b border-gray-700">
                       <span className="text-gray-400">리더 그룹 수</span>
-                      <span className="text-white font-medium">{studyConfig.total_groups}</span>
+                      {isEditingConfig && !studyConfig.is_locked ? (
+                        <input
+                          type="number"
+                          min="1"
+                          max="10"
+                          value={configForm.total_groups}
+                          onChange={e => setConfigForm({...configForm, total_groups: parseInt(e.target.value) || 1})}
+                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                        />
+                      ) : (
+                        <span className="text-white font-medium">{studyConfig.total_groups}</span>
+                      )}
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-gray-400">케이스 순서</span>
@@ -648,7 +701,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Crossover 매핑 */}
+                {/* Crossover 매핑 - 세션/블록 수에 맞춰 동적 생성 */}
                 <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 lg:col-span-2">
                   <h3 className="text-lg font-semibold text-white mb-4">Crossover 매핑</h3>
                   <div className="overflow-x-auto">
@@ -656,10 +709,14 @@ export default function AdminPage() {
                       <thead>
                         <tr className="text-gray-400 border-b border-gray-700">
                           <th className="py-2 text-left">그룹</th>
-                          <th className="py-2 text-center">S1 Block A</th>
-                          <th className="py-2 text-center">S1 Block B</th>
-                          <th className="py-2 text-center">S2 Block A</th>
-                          <th className="py-2 text-center">S2 Block B</th>
+                          {/* 세션/블록 헤더 동적 생성 */}
+                          {Array.from({ length: studyConfig.total_sessions || 2 }, (_, si) => si + 1).map(sessionNum =>
+                            Array.from({ length: studyConfig.total_blocks || 2 }, (_, bi) => String.fromCharCode(65 + bi)).map(blockLetter => (
+                              <th key={`S${sessionNum}_${blockLetter}`} className="py-2 text-center">
+                                S{sessionNum} Block {blockLetter}
+                              </th>
+                            ))
+                          )}
                         </tr>
                       </thead>
                       <tbody>
@@ -710,26 +767,21 @@ export default function AdminPage() {
                                 </span>
                               )}
                             </td>
-                            <td className="py-3 text-center">
-                              <span className={`px-2 py-1 rounded text-xs ${sessions.S1?.block_A === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
-                                {sessions.S1?.block_A}
-                              </span>
-                            </td>
-                            <td className="py-3 text-center">
-                              <span className={`px-2 py-1 rounded text-xs ${sessions.S1?.block_B === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
-                                {sessions.S1?.block_B}
-                              </span>
-                            </td>
-                            <td className="py-3 text-center">
-                              <span className={`px-2 py-1 rounded text-xs ${sessions.S2?.block_A === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
-                                {sessions.S2?.block_A}
-                              </span>
-                            </td>
-                            <td className="py-3 text-center">
-                              <span className={`px-2 py-1 rounded text-xs ${sessions.S2?.block_B === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
-                                {sessions.S2?.block_B}
-                              </span>
-                            </td>
+                            {/* 세션/블록 데이터 동적 생성 */}
+                            {Array.from({ length: studyConfig.total_sessions || 2 }, (_, si) => si + 1).map(sessionNum =>
+                              Array.from({ length: studyConfig.total_blocks || 2 }, (_, bi) => String.fromCharCode(65 + bi)).map(blockLetter => {
+                                const sessionKey = `S${sessionNum}`
+                                const blockKey = `block_${blockLetter}`
+                                const mode = sessions[sessionKey]?.[blockKey]
+                                return (
+                                  <td key={`${sessionKey}_${blockLetter}`} className="py-3 text-center">
+                                    <span className={`px-2 py-1 rounded text-xs ${mode === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
+                                      {mode || '-'}
+                                    </span>
+                                  </td>
+                                )
+                              })
+                            )}
                           </tr>
                         ))}
                       </tbody>
@@ -816,8 +868,10 @@ export default function AdminPage() {
                       <tr className="text-gray-400 border-b border-gray-700">
                         <th className="py-2 text-left">리더</th>
                         <th className="py-2 text-center">그룹</th>
-                        <th className="py-2 text-center">S1 진행률</th>
-                        <th className="py-2 text-center">S2 진행률</th>
+                        {/* 세션 컬럼 - 연구 설정의 세션 수에 맞춰 동적 생성 */}
+                        {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => (
+                          <th key={sessionNum} className="py-2 text-center">S{sessionNum} 진행률</th>
+                        ))}
                         <th className="py-2 text-center">전체</th>
                         <th className="py-2 text-center">상태</th>
                         <th className="py-2 text-right">마지막 접속</th>
@@ -825,8 +879,6 @@ export default function AdminPage() {
                     </thead>
                     <tbody>
                       {readerProgress.map(reader => {
-                        const s1 = reader.sessions.find(s => s.session_code === 'S1')
-                        const s2 = reader.sessions.find(s => s.session_code === 'S2')
                         return (
                           <tr key={reader.reader_id} className="border-b border-gray-800">
                             <td className="py-3">
@@ -838,20 +890,19 @@ export default function AdminPage() {
                                 ? (studyConfig?.group_names?.[`group_${reader.group}`] || `Group ${reader.group}`)
                                 : '-'}
                             </td>
-                            <td className="py-3 text-center">
-                              {s1 ? (
-                                <span className={s1.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
-                                  {s1.progress_percent}%
-                                </span>
-                              ) : '-'}
-                            </td>
-                            <td className="py-3 text-center">
-                              {s2 ? (
-                                <span className={s2.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
-                                  {s2.progress_percent}%
-                                </span>
-                              ) : '-'}
-                            </td>
+                            {/* 세션 진행률 - 연구 설정의 세션 수에 맞춰 동적 생성 */}
+                            {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => {
+                              const session = reader.sessions.find(s => s.session_code === `S${sessionNum}`)
+                              return (
+                                <td key={sessionNum} className="py-3 text-center">
+                                  {session ? (
+                                    <span className={session.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
+                                      {session.progress_percent}%
+                                    </span>
+                                  ) : '-'}
+                                </td>
+                              )
+                            })}
                             <td className="py-3 text-center text-primary-400 font-medium">
                               {reader.total_progress_percent}%
                             </td>
@@ -941,15 +992,18 @@ export default function AdminPage() {
                     className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
                     required
                   />
-                  {/* 그룹 선택 (리더만) */}
+                  {/* 그룹 선택 (리더만) - 연구 설정의 그룹명과 연동 */}
                   {createForm.role === 'reader' && (
                     <select
                       value={createForm.group}
                       onChange={e => setCreateForm({...createForm, group: parseInt(e.target.value)})}
                       className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
                     >
-                      <option value={1}>Group 1</option>
-                      <option value={2}>Group 2</option>
+                      {Array.from({ length: studyConfig?.total_groups || 2 }, (_, i) => i + 1).map(groupNum => (
+                        <option key={groupNum} value={groupNum}>
+                          {studyConfig?.group_names?.[`group_${groupNum}`] || `Group ${groupNum}`}
+                        </option>
+                      ))}
                     </select>
                   )}
                   <div className="flex gap-2">
@@ -1028,21 +1082,18 @@ export default function AdminPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-2 flex-wrap">
-                            {/* 리더 전용: 세션 할당 및 관리 */}
+                            {/* 리더 전용: 세션 할당 및 관리 - 연구 설정의 세션 수에 맞춰 동적 생성 */}
                             {reader.role === 'reader' && (
                               <>
-                                <button
-                                  onClick={() => handleAssignSession(reader.id, 'S1')}
-                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                                >
-                                  S1 할당
-                                </button>
-                                <button
-                                  onClick={() => handleAssignSession(reader.id, 'S2')}
-                                  className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                                >
-                                  S2 할당
-                                </button>
+                                {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => (
+                                  <button
+                                    key={sessionNum}
+                                    onClick={() => handleAssignSession(reader.id, `S${sessionNum}`)}
+                                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                  >
+                                    S{sessionNum} 할당
+                                  </button>
+                                ))}
                                 {reader.session_count > 0 && (
                                   <button
                                     onClick={() => openSessionModal(reader)}
@@ -1060,14 +1111,23 @@ export default function AdminPage() {
                             >
                               비밀번호
                             </button>
-                            {/* 공통: 비활성화 (자기 자신 제외) */}
-                            {reader.is_active && reader.id !== user?.id && (
-                              <button
-                                onClick={() => handleDeactivateReader(reader.id)}
-                                className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                              >
-                                비활성화
-                              </button>
+                            {/* 공통: 활성화/비활성화 토글 (자기 자신 제외) */}
+                            {reader.id !== user?.id && (
+                              reader.is_active ? (
+                                <button
+                                  onClick={() => handleDeactivateReader(reader.id)}
+                                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                >
+                                  비활성화
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleReactivateReader(reader.id)}
+                                  className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                >
+                                  재활성화
+                                </button>
+                              )
                             )}
                           </div>
                         </td>

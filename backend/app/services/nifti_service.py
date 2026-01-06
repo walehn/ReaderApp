@@ -125,11 +125,14 @@ class NIfTIService:
 
         # Dataset positive
         if case_id.startswith("pos_"):
-            base_id = case_id[4:]
+            base_id = case_id[4:]  # "enriched_001_10667525"
             ai_dir = self.ai_label_dir / "positive"
             if ai_dir.exists():
                 for file_path in ai_dir.iterdir():
-                    if base_id in file_path.name:
+                    # segmentation label 파일만 매칭 (_lesion_prob 제외)
+                    if (base_id in file_path.name
+                        and file_path.suffix == ".gz"
+                        and "_lesion_prob" not in file_path.name):
                         return file_path
             return None
 
@@ -138,7 +141,10 @@ class NIfTIService:
             ai_dir = self.ai_label_dir / "negative"
             if ai_dir.exists():
                 for file_path in ai_dir.iterdir():
-                    if case_id in file_path.name:
+                    # segmentation label 파일만 매칭 (_lesion_prob 제외)
+                    if (case_id in file_path.name
+                        and file_path.suffix == ".gz"
+                        and "_lesion_prob" not in file_path.name):
                         return file_path
             return None
 
@@ -339,37 +345,40 @@ class NIfTIService:
         self,
         case_id: str,
         z: int,
-        threshold: float = 0.30,
+        threshold: float = 0.30,  # API 호환성 유지 (더 이상 사용하지 않음)
         alpha: float = 0.4
     ) -> Optional[bytes]:
         """
-        AI 확률맵 오버레이 렌더링
+        AI segmentation label 오버레이 렌더링
 
         Args:
             case_id: 케이스 ID
             z: Z 슬라이스 인덱스
-            threshold: 확률 임계값 (기본 0.30)
+            threshold: (미사용, API 호환성 유지)
             alpha: 오버레이 투명도 (기본 0.4)
 
         Returns:
             PNG bytes (투명도 포함) 또는 None (AI 없음)
+
+        Note:
+            label == 2 (metastasis)인 영역만 빨간색으로 표시
         """
-        ai_prob = await self.load_ai_prob(case_id)
-        if ai_prob is None:
+        ai_label = await self.load_ai_prob(case_id)
+        if ai_label is None:
             return None
 
-        if z < 0 or z >= ai_prob.shape[2]:
+        if z < 0 or z >= ai_label.shape[2]:
             raise ValueError(f"Invalid slice index: {z}")
 
-        # 확률맵 슬라이스
-        prob_slice = ai_prob[:, :, z].T
-        prob_slice = np.flipud(prob_slice)
+        # Label 슬라이스 추출
+        label_slice = ai_label[:, :, z].T
+        label_slice = np.flipud(label_slice)
 
-        # 임계값 적용
-        mask = prob_slice >= threshold
+        # label == 2 (metastasis)인 영역만 마스킹
+        mask = label_slice == 2
 
         # RGBA 이미지 생성 (빨간색 오버레이)
-        h, w = prob_slice.shape
+        h, w = label_slice.shape
         overlay = np.zeros((h, w, 4), dtype=np.uint8)
         overlay[mask, 0] = 255  # Red
         overlay[mask, 3] = int(alpha * 255)  # Alpha

@@ -60,13 +60,18 @@ export function NiiVueCanvas({
   currentSlice = 0,
   onSliceChange,
   wlPreset = 'liver',
+  customWL = { center: 40, width: 400 },
+  wlMode = 'preset',
   lesions = [],
   onAddLesion,
   isInteractive = false,
   label = '',
   overlayUrl = null,
   showOverlay = false,
-  aiThreshold = 0.30
+  aiThreshold = 0.30,
+  // W/L 드래그 관련
+  wlDragEnabled = false,
+  onWLChange
 }) {
   const canvasRef = useRef(null)
   const nvRef = useRef(null)
@@ -76,6 +81,11 @@ export function NiiVueCanvas({
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
   const [maxSlice, setMaxSlice] = useState(0)
+
+  // W/L 드래그 상태
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef({ x: 0, y: 0 })
+  const startWLRef = useRef({ center: 50, width: 150 })
 
   // onSliceChange 변경 시 ref 업데이트 (stale closure 방지)
   useEffect(() => {
@@ -178,17 +188,18 @@ export function NiiVueCanvas({
     }
   }, [volumeUrl])
 
-  // Window/Level 프리셋 변경
+  // Window/Level 변경 (프리셋 또는 커스텀)
   useEffect(() => {
     const nv = nvRef.current
     if (!nv || !volumeLoaded || !nv.volumes || nv.volumes.length === 0) return
 
     const vol = nv.volumes[0]
-    const preset = WL_PRESETS[wlPreset]
-    vol.cal_min = preset.center - preset.width / 2
-    vol.cal_max = preset.center + preset.width / 2
+    // wlMode에 따라 프리셋 또는 커스텀 값 사용
+    const wl = wlMode === 'preset' ? WL_PRESETS[wlPreset] : customWL
+    vol.cal_min = wl.center - wl.width / 2
+    vol.cal_max = wl.center + wl.width / 2
     nv.updateGLVolume()
-  }, [wlPreset, volumeLoaded])
+  }, [wlPreset, customWL, wlMode, volumeLoaded])
 
   // 외부에서 슬라이스 변경 시 동기화
   useEffect(() => {
@@ -215,19 +226,69 @@ export function NiiVueCanvas({
 
   // 캔버스 클릭 핸들러 (병변 추가)
   const handleClick = useCallback((e) => {
+    // W/L 드래그 중이면 클릭 무시
+    if (isDragging) return
     if (!isInteractive || !onAddLesion || !nvRef.current) return
 
     const canvas = canvasRef.current
     if (!canvas) return
 
     const rect = canvas.getBoundingClientRect()
-    const canvasX = e.clientX - rect.left
-    const canvasY = e.clientY - rect.top
+
+    // CSS 표시 크기에서 내부 캔버스 크기로 스케일링
+    // (CSS 크기와 WebGL 렌더링 크기가 다를 수 있음 - devicePixelRatio 등)
+    const scaleX = canvas.width / rect.width
+    const scaleY = canvas.height / rect.height
+
+    const canvasX = (e.clientX - rect.left) * scaleX
+    const canvasY = (e.clientY - rect.top) * scaleY
 
     // 캔버스 좌표를 복셀 좌표로 변환
     const voxel = canvasToVoxel(nvRef.current, canvasX, canvasY, currentSlice)
     onAddLesion(voxel.x, voxel.y, voxel.z)
-  }, [isInteractive, onAddLesion, currentSlice])
+  }, [isInteractive, onAddLesion, currentSlice, isDragging])
+
+  // W/L 드래그 시작
+  const handleMouseDown = useCallback((e) => {
+    if (!wlDragEnabled || !onWLChange) return
+
+    // 좌클릭만 처리
+    if (e.button !== 0) return
+
+    e.preventDefault()
+    setIsDragging(true)
+    dragStartRef.current = { x: e.clientX, y: e.clientY }
+    startWLRef.current = { ...customWL }
+  }, [wlDragEnabled, onWLChange, customWL])
+
+  // W/L 드래그 중
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || !onWLChange) return
+
+    const dx = e.clientX - dragStartRef.current.x  // 수평: Width 조정
+    const dy = e.clientY - dragStartRef.current.y  // 수직: Level 조정
+
+    // 감도 조정: 드래그 1픽셀당 변화량
+    const widthSensitivity = 2
+    const centerSensitivity = 1
+
+    const newWidth = Math.max(1, startWLRef.current.width + dx * widthSensitivity)
+    const newCenter = startWLRef.current.center - dy * centerSensitivity  // 위로 드래그 = 밝아짐
+
+    onWLChange(newCenter, newWidth)
+  }, [isDragging, onWLChange])
+
+  // W/L 드래그 종료
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  // 마우스가 캔버스를 벗어났을 때도 드래그 종료
+  const handleMouseLeave = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false)
+    }
+  }, [isDragging])
 
   // 현재 슬라이스의 병변 필터링
   const currentLesions = useMemo(() => {
@@ -306,7 +367,17 @@ export function NiiVueCanvas({
         ref={canvasRef}
         onWheel={handleWheel}
         onClick={handleClick}
-        className={`w-full h-full bg-black ${isInteractive ? 'cursor-crosshair' : 'cursor-default'}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        className={`w-full h-full bg-black ${
+          wlDragEnabled
+            ? 'cursor-move'
+            : isInteractive
+              ? 'cursor-crosshair'
+              : 'cursor-default'
+        }`}
         style={{ display: 'block' }}
       />
 

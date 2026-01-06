@@ -38,11 +38,20 @@ export function SliceCanvas({
   onWheel = null,
   isInteractive = false,
   label = '',
+  // W/L 드래그 관련
+  wlDragEnabled = false,
+  onWLChange = null,
+  customWL = { center: 40, width: 400 },
 }) {
   const canvasRef = useRef(null)
   const [image, setImage] = useState(null)
   const [overlay, setOverlay] = useState(null)
   const [imageLoading, setImageLoading] = useState(false)
+
+  // W/L 드래그 상태
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStartRef = useRef({ x: 0, y: 0 })
+  const startWLRef = useRef({ center: 50, width: 150 })
 
   // 이미지 로드
   useEffect(() => {
@@ -152,6 +161,8 @@ export function SliceCanvas({
 
   // 클릭 이벤트 핸들러
   const handleClick = useCallback((e) => {
+    // W/L 드래그 중이면 클릭 무시
+    if (isDragging) return
     if (!isInteractive || !onAddLesion) return
 
     const canvas = canvasRef.current
@@ -165,7 +176,7 @@ export function SliceCanvas({
     const y = Math.round((e.clientY - rect.top) * scaleY)
 
     onAddLesion(x, y)
-  }, [isInteractive, onAddLesion])
+  }, [isInteractive, onAddLesion, isDragging])
 
   // 마우스 휠 핸들러
   const handleWheel = useCallback((e) => {
@@ -173,6 +184,48 @@ export function SliceCanvas({
     e.preventDefault()
     onWheel(e.deltaY)
   }, [onWheel])
+
+  // W/L 드래그 시작
+  const handleMouseDown = useCallback((e) => {
+    if (!wlDragEnabled || !onWLChange) return
+
+    // 좌클릭만 처리
+    if (e.button !== 0) return
+
+    e.preventDefault()
+    setIsDragging(true)
+    dragStartRef.current = { x: e.clientX, y: e.clientY }
+    startWLRef.current = { ...customWL }
+  }, [wlDragEnabled, onWLChange, customWL])
+
+  // W/L 드래그 중
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || !onWLChange) return
+
+    const dx = e.clientX - dragStartRef.current.x  // 수평: Width 조정
+    const dy = e.clientY - dragStartRef.current.y  // 수직: Level 조정
+
+    // 감도 조정: 드래그 1픽셀당 변화량
+    const widthSensitivity = 2
+    const centerSensitivity = 1
+
+    const newWidth = Math.max(1, startWLRef.current.width + dx * widthSensitivity)
+    const newCenter = startWLRef.current.center - dy * centerSensitivity  // 위로 드래그 = 밝아짐
+
+    onWLChange(newCenter, newWidth)
+  }, [isDragging, onWLChange])
+
+  // W/L 드래그 종료
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false)
+  }, [])
+
+  // 마우스가 캔버스를 벗어났을 때도 드래그 종료
+  const handleMouseLeave = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false)
+    }
+  }, [isDragging])
 
   return (
     <div className="relative">
@@ -182,7 +235,17 @@ export function SliceCanvas({
         height={CANVAS_SIZE}
         onClick={handleClick}
         onWheel={handleWheel}
-        className={`bg-black ${isInteractive ? 'cursor-crosshair' : 'cursor-default'}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        className={`bg-black ${
+          wlDragEnabled
+            ? 'cursor-move'
+            : isInteractive
+              ? 'cursor-crosshair'
+              : 'cursor-default'
+        }`}
         style={{ width: '100%', maxWidth: CANVAS_SIZE, aspectRatio: '1/1' }}
       />
       {imageLoading && (

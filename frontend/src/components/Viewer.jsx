@@ -61,8 +61,16 @@ export function Viewer({
   wlPreset = 'soft',
   onToggleWL,
   aiAvailable = false,
+  // 새로 추가: W/L 드래그 관련 props
+  customWL = { center: 40, width: 400 },
+  onWLChange,
+  wlMode = 'preset',
 }) {
-  const [showOverlay, setShowOverlay] = useState(false)
+  // AIDED 모드일 때 AI Overlay 기본 ON
+  const [showOverlay, setShowOverlay] = useState(isAided)
+
+  // W/L 드래그 모드 활성화 상태
+  const [wlDragEnabled, setWlDragEnabled] = useState(false)
 
   // 동시 스크롤 모드 상태 (기본값: ON)
   const [syncScroll, setSyncScroll] = useState(true)
@@ -71,13 +79,18 @@ export function Viewer({
   const [baselineSlice, setBaselineSlice] = useState(currentSlice)
   const [followupSlice, setFollowupSlice] = useState(currentSlice)
 
-  // 외부 currentSlice 변경 시 개별 슬라이스도 동기화
+  // 외부 currentSlice 변경 시 (슬라이더 사용 등) delta 기반 동기화
+  // syncScroll ON: 슬라이더는 followupSlice 기준, baseline은 delta만큼 이동
   useEffect(() => {
     if (syncScroll) {
-      setBaselineSlice(currentSlice)
-      setFollowupSlice(currentSlice)
+      const delta = currentSlice - followupSlice
+      if (delta !== 0) {
+        setBaselineSlice(prev => Math.max(0, Math.min(prev + delta, totalSlices - 1)))
+        setFollowupSlice(currentSlice)
+      }
     }
-  }, [currentSlice, syncScroll])
+  }, [currentSlice]) // eslint-disable-line react-hooks/exhaustive-deps
+  // 의존성에서 followupSlice, totalSlices 제외하여 무한루프 방지
 
   // WebGL/NiiVue 지원 여부 확인 (한 번만 체크)
   const webglSupport = useMemo(() => checkNiiVueSupport(), [])
@@ -110,23 +123,29 @@ export function Viewer({
     }
   }
 
-  // Baseline 슬라이스 변경 핸들러
-  const handleBaselineSliceChange = useCallback((slice) => {
-    setBaselineSlice(slice)
+  // Baseline 슬라이스 변경 핸들러 (delta 기반 동기화)
+  const handleBaselineSliceChange = useCallback((newSlice) => {
     if (syncScroll) {
-      setFollowupSlice(slice)
-      onSliceChange?.(slice)
+      const delta = newSlice - baselineSlice
+      setBaselineSlice(newSlice)
+      setFollowupSlice(prev => Math.max(0, Math.min(prev + delta, totalSlices - 1)))
+    } else {
+      setBaselineSlice(newSlice)
     }
-  }, [syncScroll, onSliceChange])
+  }, [syncScroll, baselineSlice, totalSlices])
 
-  // Followup 슬라이스 변경 핸들러
-  const handleFollowupSliceChange = useCallback((slice) => {
-    setFollowupSlice(slice)
+  // Followup 슬라이스 변경 핸들러 (delta 기반 동기화)
+  const handleFollowupSliceChange = useCallback((newSlice) => {
     if (syncScroll) {
-      setBaselineSlice(slice)
-      onSliceChange?.(slice)
+      const delta = newSlice - followupSlice
+      setFollowupSlice(newSlice)
+      setBaselineSlice(prev => Math.max(0, Math.min(prev + delta, totalSlices - 1)))
+    } else {
+      setFollowupSlice(newSlice)
     }
-  }, [syncScroll, onSliceChange])
+    // Followup 변경 시 외부 currentSlice도 업데이트 (병변 마킹 기준)
+    onSliceChange?.(newSlice)
+  }, [syncScroll, followupSlice, totalSlices, onSliceChange])
 
   // NiiVue용 병변 추가 핸들러 (복셀 좌표)
   const handleNiiVueAddLesion = useCallback((x, y, z) => {
@@ -177,8 +196,12 @@ export function Viewer({
               currentSlice={syncScroll ? currentSlice : baselineSlice}
               onSliceChange={handleBaselineSliceChange}
               wlPreset={wlPreset}
+              customWL={customWL}
+              wlMode={wlMode}
               lesions={[]}
               isInteractive={false}
+              wlDragEnabled={wlDragEnabled}
+              onWLChange={onWLChange}
               label={`Baseline${!syncScroll ? ` (${baselineSlice + 1})` : ''}`}
             />
           ) : (
@@ -188,6 +211,9 @@ export function Viewer({
               currentSlice={syncScroll ? currentSlice : baselineSlice}
               onWheel={handleWheel}
               isInteractive={false}
+              wlDragEnabled={wlDragEnabled}
+              onWLChange={onWLChange}
+              customWL={customWL}
               label={`Baseline${!syncScroll ? ` (${baselineSlice + 1})` : ''}`}
             />
           )}
@@ -202,9 +228,13 @@ export function Viewer({
               currentSlice={syncScroll ? currentSlice : followupSlice}
               onSliceChange={handleFollowupSliceChange}
               wlPreset={wlPreset}
+              customWL={customWL}
+              wlMode={wlMode}
               lesions={lesions}
               onAddLesion={handleNiiVueAddLesion}
               isInteractive={true}
+              wlDragEnabled={wlDragEnabled}
+              onWLChange={onWLChange}
               label={`Follow-up${!syncScroll ? ` (${followupSlice + 1})` : ''}`}
               overlayUrl={overlayUrl}
               showOverlay={showOverlay && isAided}
@@ -220,6 +250,9 @@ export function Viewer({
               onAddLesion={handleServerAddLesion}
               onWheel={handleWheel}
               isInteractive={true}
+              wlDragEnabled={wlDragEnabled}
+              onWLChange={onWLChange}
+              customWL={customWL}
               label={`Follow-up${!syncScroll ? ` (${followupSlice + 1})` : ''}`}
             />
           )}
@@ -246,14 +279,14 @@ export function Viewer({
         </div>
 
         {/* 추가 컨트롤 */}
-        <div className="flex items-center justify-between">
-          {/* W/L 토글 */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          {/* W/L 프리셋 토글 */}
           <div className="flex items-center gap-2">
             <span className="text-gray-400 text-sm">W/L:</span>
             <button
               onClick={onToggleWL}
               className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                wlPreset === 'liver'
+                wlPreset === 'liver' && wlMode === 'preset'
                   ? 'bg-primary-600 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
@@ -263,13 +296,31 @@ export function Viewer({
             <button
               onClick={onToggleWL}
               className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                wlPreset === 'soft'
+                wlPreset === 'soft' && wlMode === 'preset'
                   ? 'bg-primary-600 text-white'
                   : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
               }`}
             >
               Soft
             </button>
+            {/* W/L 드래그 모드 토글 */}
+            <button
+              onClick={() => setWlDragEnabled(!wlDragEnabled)}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                wlDragEnabled
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+              }`}
+              title="마우스 드래그로 W/L 조정 (수평: Width, 수직: Level)"
+            >
+              드래그
+            </button>
+            {/* 현재 W/L 값 표시 */}
+            <span className={`text-xs font-mono px-2 py-1 rounded ${
+              wlMode === 'custom' ? 'bg-purple-900/50 text-purple-300' : 'bg-gray-800 text-gray-400'
+            }`}>
+              C:{Math.round(customWL.center)} W:{Math.round(customWL.width)}
+            </span>
           </div>
 
           {/* AI 오버레이 토글 (AIDED 모드만) */}
