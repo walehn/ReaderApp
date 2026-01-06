@@ -73,18 +73,42 @@ export default function ViewerPage() {
         // 2. 케이스 할당 조회 (세션별 케이스 목록)
         const allocation = await api.getCaseAllocation(numSessions, numBlocks)
 
-        // 3. 현재 세션의 케이스 목록 가져오기
-        const sessionKey = `S${sessionId}`
-        const sessionCases = allocation.sessions[sessionKey]
+        // 3. 내 세션 목록 조회하여 session_code 확보
+        //    URL의 sessionId는 DB 내부 ID이므로, session_code로 변환 필요
+        const mySessions = await sessionsApi.getMySessions(token)
+        const currentSession = mySessions.find(s => s.session_id === parseInt(sessionId))
+
+        // session_code 결정: 기존 세션이면 DB에서, 새 세션이면 할당에서 추론
+        let sessionCode
+        if (currentSession) {
+          // 재진입: DB에서 session_code 가져오기
+          sessionCode = currentSession.session_code
+        } else {
+          // 새 세션: 다음 세션 번호 계산 (기존 세션 수 + 1)
+          const existingSessionCodes = mySessions.map(s => s.session_code)
+          for (let i = 1; i <= numSessions; i++) {
+            const candidateCode = `S${i}`
+            if (!existingSessionCodes.includes(candidateCode)) {
+              sessionCode = candidateCode
+              break
+            }
+          }
+          if (!sessionCode) {
+            throw new Error('모든 세션이 이미 할당되었습니다.')
+          }
+        }
+
+        // 4. session_code로 케이스 목록 조회
+        const sessionCases = allocation.sessions[sessionCode]
 
         if (!sessionCases) {
-          throw new Error(`세션 ${sessionId}의 케이스 할당을 찾을 수 없습니다. 유효한 세션: 1-${numSessions}`)
+          throw new Error(`세션 ${sessionCode}의 케이스 할당을 찾을 수 없습니다. 유효한 세션: S1-S${numSessions}`)
         }
 
         const blockACases = sessionCases.block_a
         const blockBCases = sessionCases.block_b
 
-        // 4. 세션 진입 (동적 케이스 목록 사용)
+        // 5. 세션 진입 (동적 케이스 목록 사용)
         const enterResult = await sessionsApi.enterSession(
           token,
           parseInt(sessionId),

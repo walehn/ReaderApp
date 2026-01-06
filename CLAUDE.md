@@ -1,5 +1,7 @@
 # Claude Code Guidelines
 
+0. Operating system: Ubuntu 22.04
+
 1. All output must be in Korean.
 
 2. Use Serena tools first when available.
