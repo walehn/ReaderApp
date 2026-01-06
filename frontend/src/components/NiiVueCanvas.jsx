@@ -42,6 +42,9 @@ import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { Niivue, SLICE_TYPE } from '@niivue/niivue'
 import { canvasToVoxel, voxelToCanvas, filterLesionsBySlice } from '../utils/coordinates'
 
+// Stale closure 방지를 위한 ref 패턴
+// NiiVue의 onLocationChange 콜백이 초기화 시점의 함수를 캡처하는 문제 해결
+
 // Window/Level 프리셋 (백엔드와 동일)
 const WL_PRESETS = {
   liver: { center: 50, width: 150 },
@@ -68,10 +71,16 @@ export function NiiVueCanvas({
   const canvasRef = useRef(null)
   const nvRef = useRef(null)
   const overlayCanvasRef = useRef(null)
+  const onSliceChangeRef = useRef(onSliceChange)  // 최신 콜백 참조용
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
   const [maxSlice, setMaxSlice] = useState(0)
+
+  // onSliceChange 변경 시 ref 업데이트 (stale closure 방지)
+  useEffect(() => {
+    onSliceChangeRef.current = onSliceChange
+  }, [onSliceChange])
 
   // NIfTI 볼륨 URL 생성
   const volumeUrl = useMemo(() => {
@@ -142,11 +151,11 @@ export function NiiVueCanvas({
         setVolumeLoaded(true)
         setLoading(false)
 
-        // 슬라이스 변경 콜백 설정
+        // 슬라이스 변경 콜백 설정 (ref를 통해 항상 최신 함수 호출)
         nv.onLocationChange = (data) => {
-          if (data && data.vox && onSliceChange) {
+          if (data && data.vox && onSliceChangeRef.current) {
             const slice = Math.round(data.vox[2])
-            onSliceChange(slice)
+            onSliceChangeRef.current(slice)
           }
         }
 
