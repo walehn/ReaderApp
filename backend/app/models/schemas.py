@@ -356,6 +356,13 @@ class StudyConfigResponse(BaseModel):
         from_attributes = True
 
 
+class StudyConfigPublicResponse(BaseModel):
+    """공개 연구 설정 (인증 불필요) - 세션/블록 수만 노출"""
+    total_sessions: int
+    total_blocks: int
+    study_name: str
+
+
 class StudyConfigUpdateRequest(BaseModel):
     """연구 설정 수정 요청
 

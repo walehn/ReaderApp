@@ -6,9 +6,14 @@
  *
  * 주요 기능:
  *   - 세션 진입 및 케이스 로딩
- *   - 2-up 뷰어 렌더링 (Baseline/Followup)
+ *   - 2-up 뷰어 렌더링 (Baseline/Followup) - NiiVue WebGL 또는 서버 PNG
  *   - 병변 마킹
  *   - 결과 제출 및 다음 케이스 이동
+ *
+ * 케이스 할당:
+ *   - /study-config/public API에서 세션/블록 수 조회
+ *   - /case/allocate API에서 세션별 케이스 목록 동적 할당
+ *   - dataset 폴더의 실제 NIfTI 파일 사용
  *
  * URL 파라미터:
  *   /viewer/:sessionId
@@ -29,10 +34,6 @@ import LesionMarker from '../components/LesionMarker'
 import InputPanel from '../components/InputPanel'
 import ProgressBar from '../components/ProgressBar'
 
-// 임시 케이스 목록 (나중에 API에서 가져오거나 설정에서 관리)
-const BLOCK_A_CASES = ['case_0001', 'case_0002', 'case_0003']
-const BLOCK_B_CASES = ['case_0004', 'case_0005', 'case_0006']
-
 export default function ViewerPage() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
@@ -44,8 +45,8 @@ export default function ViewerPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  // 케이스 관리
-  const caseData = useCase(currentCase?.case_id, 3)
+  // 케이스 관리 (k_max는 세션 설정에서 동적으로 가져옴)
+  const caseData = useCase(currentCase?.case_id, sessionInfo?.k_max || 3)
 
   // 타이머
   const timer = useTimer()
@@ -64,16 +65,35 @@ export default function ViewerPage() {
 
         const token = getToken()
 
-        // 세션 진입
+        // 1. 연구 설정에서 세션/블록 수 조회
+        const studyConfig = await api.getPublicStudyConfig()
+        const numSessions = studyConfig.total_sessions
+        const numBlocks = studyConfig.total_blocks
+
+        // 2. 케이스 할당 조회 (세션별 케이스 목록)
+        const allocation = await api.getCaseAllocation(numSessions, numBlocks)
+
+        // 3. 현재 세션의 케이스 목록 가져오기
+        const sessionKey = `S${sessionId}`
+        const sessionCases = allocation.sessions[sessionKey]
+
+        if (!sessionCases) {
+          throw new Error(`세션 ${sessionId}의 케이스 할당을 찾을 수 없습니다. 유효한 세션: 1-${numSessions}`)
+        }
+
+        const blockACases = sessionCases.block_a
+        const blockBCases = sessionCases.block_b
+
+        // 4. 세션 진입 (동적 케이스 목록 사용)
         const enterResult = await sessionsApi.enterSession(
           token,
           parseInt(sessionId),
-          BLOCK_A_CASES,
-          BLOCK_B_CASES
+          blockACases,
+          blockBCases
         )
         setSessionInfo(enterResult)
 
-        // 현재 케이스 정보
+        // 5. 현재 케이스 정보
         const caseInfo = await sessionsApi.getCurrentCase(token, parseInt(sessionId))
         setCurrentCase(caseInfo)
 

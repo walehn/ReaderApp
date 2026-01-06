@@ -135,6 +135,26 @@ export const api = {
   getSessionProgress: async (readerId, sessionId) => {
     return fetchApi(`/study/progress?reader_id=${encodeURIComponent(readerId)}&session_id=${encodeURIComponent(sessionId)}`)
   },
+
+  /**
+   * 공개 연구 설정 조회 (인증 불필요)
+   * ViewerPage에서 세션/블록 수를 조회하여 케이스 할당에 사용
+   * @returns {Promise<{total_sessions, total_blocks, study_name}>}
+   */
+  getPublicStudyConfig: async () => {
+    return fetchApi('/study-config/public')
+  },
+
+  /**
+   * 케이스 할당 조회
+   * 세션/블록별로 할당된 케이스 목록 반환
+   * @param {number} numSessions - 총 세션 수
+   * @param {number} numBlocks - 세션당 블록 수
+   * @returns {Promise<{sessions: {S1: {block_a: [], block_b: []}, ...}}>}
+   */
+  getCaseAllocation: async (numSessions = 4, numBlocks = 2) => {
+    return fetchApi(`/case/allocate?num_sessions=${numSessions}&num_blocks=${numBlocks}`)
+  },
 }
 
 // =============================================================================
