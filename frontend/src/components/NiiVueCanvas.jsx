@@ -108,8 +108,11 @@ export function NiiVueCanvas({
         // 캔버스 연결
         await nv.attachToCanvas(canvasRef.current)
 
-        // 볼륨 로드
-        await nv.loadVolumes([{ url: volumeUrl }])
+        // 볼륨 로드 (name에 .nii.gz 확장자 명시 - NiiVue가 파일 형식 인식용)
+        await nv.loadVolumes([{
+          url: volumeUrl,
+          name: `${caseId}_${series}.nii.gz`
+        }])
 
         if (!mounted) return
 
