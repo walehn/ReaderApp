@@ -124,8 +124,23 @@ export function NiiVueCanvas({
 
     const initNiiVue = async () => {
       try {
-        // 기존 인스턴스 정리
+        // 기존 인스턴스 완전 정리 (메모리 누수 방지)
         if (nvRef.current) {
+          try {
+            const oldNv = nvRef.current
+            // 모든 볼륨 제거
+            while (oldNv.volumes && oldNv.volumes.length > 0) {
+              oldNv.removeVolumeByIndex(0)
+            }
+            // WebGL 컨텍스트 정리
+            if (oldNv.gl) {
+              const ext = oldNv.gl.getExtension('WEBGL_lose_context')
+              if (ext) ext.loseContext()
+            }
+            console.log('NiiVue cleanup before new instance: resources released')
+          } catch (e) {
+            console.warn('NiiVue pre-init cleanup error:', e)
+          }
           nvRef.current = null
         }
 
