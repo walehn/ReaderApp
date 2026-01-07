@@ -191,7 +191,6 @@ export function Viewer({
         <div className="space-y-2">
           {useWebGL ? (
             <NiiVueCanvas
-              key={`${caseId}-baseline`}
               caseId={caseId}
               series="baseline"
               currentSlice={syncScroll ? currentSlice : baselineSlice}
@@ -224,7 +223,6 @@ export function Viewer({
         <div className="space-y-2">
           {useWebGL ? (
             <NiiVueCanvas
-              key={`${caseId}-followup`}
               caseId={caseId}
               series="followup"
               currentSlice={syncScroll ? currentSlice : followupSlice}

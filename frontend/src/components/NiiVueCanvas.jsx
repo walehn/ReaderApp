@@ -45,6 +45,27 @@ import { canvasToVoxel, voxelToCanvas, filterLesionsBySlice } from '../utils/coo
 // Stale closure 방지를 위한 ref 패턴
 // NiiVue의 onLocationChange 콜백이 초기화 시점의 함수를 캡처하는 문제 해결
 
+/**
+ * NiiVue 메모리 관리 - 인스턴스 재사용 패턴
+ *
+ * ★ 핵심 전략: NiiVue 인스턴스는 1회만 생성, 볼륨만 교체
+ *
+ * 이전 문제:
+ *   - 케이스 전환 시 새 인스턴스 생성 → 메모리 누적 (172MB → 430MB → 889MB)
+ *   - loadVolumes()는 this.volumes = [] 만 호출 (메모리 정리 안 됨)
+ *   - loseContext() 호출해도 TypedArray(볼륨 데이터)는 GC 안 됨
+ *
+ * 해결책:
+ *   1. 인스턴스는 컴포넌트 마운트 시 1회만 생성
+ *   2. 볼륨 교체: removeVolumeByIndex() + addVolumeFromUrl() 사용
+ *   3. WebGL 컨텍스트 재사용 (loseContext는 언마운트 시에만)
+ *
+ * 메모리 영향:
+ *   - removeVolumeByIndex(i): ✅ GPU/CPU 리소스 해제
+ *   - addVolumeFromUrl(opts): ✅ 기존 인스턴스에 볼륨 추가
+ *   - loadVolumes([...]): ⚠️ 메모리 정리 안 됨 (사용 금지!)
+ */
+
 // Window/Level 프리셋 (백엔드와 동일)
 const WL_PRESETS = {
   liver: { center: 50, width: 150 },
@@ -81,6 +102,7 @@ export function NiiVueCanvas({
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
   const [maxSlice, setMaxSlice] = useState(0)
+  const [instanceReady, setInstanceReady] = useState(false)  // NiiVue 인스턴스 준비 상태
 
   // W/L 드래그 상태
   const [isDragging, setIsDragging] = useState(false)
@@ -114,37 +136,17 @@ export function NiiVueCanvas({
     }
   }, [caseId, showOverlay, overlayUrl])
 
-  // NiiVue 초기화 및 볼륨 로드
+  // =========================================================================
+  // useEffect 1: NiiVue 인스턴스 생성 (컴포넌트 마운트 시 1회만)
+  // =========================================================================
   useEffect(() => {
-    if (!canvasRef.current || !volumeUrl) return
+    if (!canvasRef.current) return
 
     let mounted = true
-    setLoading(true)
-    setError(null)
 
-    const initNiiVue = async () => {
+    const createInstance = async () => {
       try {
-        // 기존 인스턴스 완전 정리 (메모리 누수 방지)
-        if (nvRef.current) {
-          try {
-            const oldNv = nvRef.current
-            // 모든 볼륨 제거
-            while (oldNv.volumes && oldNv.volumes.length > 0) {
-              oldNv.removeVolumeByIndex(0)
-            }
-            // WebGL 컨텍스트 정리
-            if (oldNv.gl) {
-              const ext = oldNv.gl.getExtension('WEBGL_lose_context')
-              if (ext) ext.loseContext()
-            }
-            console.log('NiiVue cleanup before new instance: resources released')
-          } catch (e) {
-            console.warn('NiiVue pre-init cleanup error:', e)
-          }
-          nvRef.current = null
-        }
-
-        // NiiVue 인스턴스 생성
+        // NiiVue 인스턴스 생성 (1회만)
         const nv = new Niivue({
           backColor: [0, 0, 0, 1],           // 검은 배경
           crosshairColor: [1, 0.5, 0, 1],    // 주황색 십자선
@@ -158,15 +160,83 @@ export function NiiVueCanvas({
         // 캔버스 연결
         await nv.attachToCanvas(canvasRef.current)
 
-        // 볼륨 로드 (name에 .nii.gz 확장자 명시 - NiiVue가 파일 형식 인식용)
-        await nv.loadVolumes([{
-          url: volumeUrl,
-          name: `${caseId}_${series}.nii.gz`
-        }])
-
         if (!mounted) return
 
-        // 볼륨 정보 추출
+        nvRef.current = nv
+        setInstanceReady(true)
+        console.log('[NiiVue] Instance created (once)')
+
+        // 슬라이스 변경 콜백 설정 (ref를 통해 항상 최신 함수 호출)
+        nv.onLocationChange = (data) => {
+          if (data && data.vox && onSliceChangeRef.current) {
+            const slice = Math.round(data.vox[2])
+            onSliceChangeRef.current(slice)
+          }
+        }
+      } catch (err) {
+        console.error('[NiiVue] Instance creation error:', err)
+        if (mounted) {
+          setError(err.message || 'Failed to create NiiVue instance')
+          setLoading(false)
+        }
+      }
+    }
+
+    createInstance()
+
+    // 컴포넌트 언마운트 시에만 cleanup (WebGL 컨텍스트 해제)
+    return () => {
+      mounted = false
+      if (nvRef.current) {
+        try {
+          // 콜백 제거
+          nvRef.current.onLocationChange = null
+          // WebGL 컨텍스트 강제 손실 (GPU 리소스 반환)
+          const ext = nvRef.current.gl?.getExtension('WEBGL_lose_context')
+          if (ext) {
+            ext.loseContext()
+            console.log('[NiiVue] loseContext() called - instance destroyed')
+          }
+        } catch (e) {
+          console.warn('[NiiVue] Cleanup error:', e)
+        }
+        nvRef.current = null
+        setInstanceReady(false)
+      }
+    }
+  }, [])  // 빈 의존성 - 마운트 시 1회만 실행
+
+  // =========================================================================
+  // useEffect 2: 볼륨 로드/교체 (volumeUrl 변경 시)
+  // =========================================================================
+  useEffect(() => {
+    const nv = nvRef.current
+    if (!nv || !instanceReady || !volumeUrl) return
+
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    setVolumeLoaded(false)
+
+    const loadVolume = async () => {
+      try {
+        // 기존 모든 볼륨 제거 (역순으로 안전하게 - GPU/CPU 리소스 해제)
+        while (nv.volumes && nv.volumes.length > 0) {
+          nv.removeVolumeByIndex(nv.volumes.length - 1)
+        }
+        console.log('[NiiVue] Old volumes removed')
+
+        if (cancelled) return
+
+        // 새 볼륨 추가 (기존 인스턴스에 추가)
+        await nv.addVolumeFromUrl({
+          url: volumeUrl,
+          name: `${caseId}_${series}.nii.gz`
+        })
+
+        if (cancelled) return
+
+        // 볼륨 정보 추출 및 설정
         if (nv.volumes && nv.volumes.length > 0) {
           const vol = nv.volumes[0]
           const numSlices = vol.dims[3]
@@ -188,52 +258,25 @@ export function NiiVueCanvas({
           }
         }
 
-        nvRef.current = nv
         setVolumeLoaded(true)
         setLoading(false)
-
-        // 슬라이스 변경 콜백 설정 (ref를 통해 항상 최신 함수 호출)
-        nv.onLocationChange = (data) => {
-          if (data && data.vox && onSliceChangeRef.current) {
-            const slice = Math.round(data.vox[2])
-            onSliceChangeRef.current(slice)
-          }
-        }
+        console.log('[NiiVue] New volume loaded:', caseId, series)
 
       } catch (err) {
-        console.error('NiiVue initialization error:', err)
-        if (mounted) {
+        console.error('[NiiVue] Volume load error:', err)
+        if (!cancelled) {
           setError(err.message || 'Failed to load NIfTI volume')
           setLoading(false)
         }
       }
     }
 
-    initNiiVue()
+    loadVolume()
 
     return () => {
-      mounted = false
-      // NiiVue 인스턴스 및 볼륨 메모리 해제
-      if (nvRef.current) {
-        try {
-          const nv = nvRef.current
-          // 모든 볼륨 제거
-          while (nv.volumes && nv.volumes.length > 0) {
-            nv.removeVolumeByIndex(0)
-          }
-          // WebGL 컨텍스트 정리
-          if (nv.gl) {
-            const ext = nv.gl.getExtension('WEBGL_lose_context')
-            if (ext) ext.loseContext()
-          }
-          console.log('NiiVue cleanup: volumes and WebGL released')
-        } catch (e) {
-          console.warn('NiiVue cleanup error:', e)
-        }
-        nvRef.current = null
-      }
+      cancelled = true
     }
-  }, [volumeUrl])
+  }, [volumeUrl, instanceReady])  // volumeUrl 또는 인스턴스 준비 상태 변경 시 실행
 
   // Window/Level 변경 (프리셋 또는 커스텀)
   useEffect(() => {
@@ -269,9 +312,16 @@ export function NiiVueCanvas({
     if (!nv || !volumeLoaded) return
 
     const loadOverlay = async () => {
-      // 기존 오버레이 볼륨 제거 (인덱스 1 이상)
-      while (nv.volumes && nv.volumes.length > 1) {
-        nv.removeVolumeByIndex(1)
+      // 기존 오버레이 볼륨 제거 (인덱스 1 이상, 객체 기반 안전 제거)
+      if (nv.volumes && nv.volumes.length > 1) {
+        const overlayVolumes = nv.volumes.slice(1)  // 메인 볼륨(0) 제외 복사
+        for (const vol of overlayVolumes) {
+          try {
+            nv.removeVolume(vol)
+          } catch (e) {
+            console.warn('[NiiVue] Overlay volume removal failed:', e)
+          }
+        }
       }
 
       // showOverlay가 false이거나 URL이 없으면 오버레이 없이 렌더링
