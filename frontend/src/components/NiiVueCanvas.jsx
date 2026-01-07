@@ -76,13 +76,11 @@ export function NiiVueCanvas({
   const canvasRef = useRef(null)
   const nvRef = useRef(null)
   const overlayCanvasRef = useRef(null)
-  const aiOverlayCanvasRef = useRef(null)  // AI Overlay 캔버스
   const onSliceChangeRef = useRef(onSliceChange)  // 최신 콜백 참조용
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
   const [maxSlice, setMaxSlice] = useState(0)
-  const [aiOverlayImage, setAiOverlayImage] = useState(null)  // AI Overlay 이미지
 
   // W/L 드래그 상태
   const [isDragging, setIsDragging] = useState(false)
@@ -99,6 +97,22 @@ export function NiiVueCanvas({
     if (!caseId || !series) return null
     return `${API_BASE}/nifti/volume?case_id=${caseId}&series=${series}`
   }, [caseId, series])
+
+  // AI Overlay NIfTI URL 생성 (NiiVue 직접 로드용)
+  const aiOverlayNiftiUrl = useMemo(() => {
+    if (!caseId || !showOverlay) return null
+    // overlayUrl에서 reader_id와 session_id 추출 (props로 받은 overlayUrl 파싱)
+    if (!overlayUrl) return null
+    try {
+      const url = new URL(overlayUrl, window.location.origin)
+      const readerId = url.searchParams.get('reader_id')
+      const sessionId = url.searchParams.get('session_id')
+      if (!readerId || !sessionId) return null
+      return `${API_BASE}/nifti/overlay?case_id=${caseId}&reader_id=${readerId}&session_id=${sessionId}`
+    } catch {
+      return null
+    }
+  }, [caseId, showOverlay, overlayUrl])
 
   // NiiVue 초기화 및 볼륨 로드
   useEffect(() => {
@@ -184,7 +198,23 @@ export function NiiVueCanvas({
 
     return () => {
       mounted = false
+      // NiiVue 인스턴스 및 볼륨 메모리 해제
       if (nvRef.current) {
+        try {
+          const nv = nvRef.current
+          // 모든 볼륨 제거
+          while (nv.volumes && nv.volumes.length > 0) {
+            nv.removeVolumeByIndex(0)
+          }
+          // WebGL 컨텍스트 정리
+          if (nv.gl) {
+            const ext = nv.gl.getExtension('WEBGL_lose_context')
+            if (ext) ext.loseContext()
+          }
+          console.log('NiiVue cleanup: volumes and WebGL released')
+        } catch (e) {
+          console.warn('NiiVue cleanup error:', e)
+        }
         nvRef.current = null
       }
     }
@@ -216,27 +246,54 @@ export function NiiVueCanvas({
     }
   }, [currentSlice, volumeLoaded, maxSlice])
 
-  // AI Overlay 이미지 로드
+  // AI Overlay NIfTI 로드 (NiiVue 오버레이 볼륨)
+  // - Liver mask (label=1): 녹색
+  // - Metastasis (label=2): 빨간색
   useEffect(() => {
-    if (!overlayUrl || !showOverlay) {
-      setAiOverlayImage(null)
-      return
+    const nv = nvRef.current
+    if (!nv || !volumeLoaded) return
+
+    const loadOverlay = async () => {
+      // 기존 오버레이 볼륨 제거 (인덱스 1 이상)
+      while (nv.volumes && nv.volumes.length > 1) {
+        nv.removeVolumeByIndex(1)
+      }
+
+      // showOverlay가 false이거나 URL이 없으면 오버레이 없이 렌더링
+      if (!showOverlay || !aiOverlayNiftiUrl) {
+        nv.updateGLVolume()
+        return
+      }
+
+      try {
+        // 1. Liver mask 오버레이 (label=1, 은은한 녹색)
+        await nv.addVolumeFromUrl({
+          url: aiOverlayNiftiUrl,
+          name: `${caseId}_liver_mask.nii.gz`,
+          colormap: 'green',
+          opacity: 0.15,  // 은은하게 (CT 가독성 유지)
+          cal_min: 0.5,
+          cal_max: 1.5
+        })
+        console.log('Liver mask overlay loaded (green, opacity=0.15)')
+
+        // 2. Metastasis 오버레이 (label=2, 선명한 빨간색)
+        await nv.addVolumeFromUrl({
+          url: aiOverlayNiftiUrl,
+          name: `${caseId}_metastasis.nii.gz`,
+          colormap: 'red',
+          opacity: 0.7,  // 강조 (병변 식별 용이)
+          cal_min: 1.5,
+          cal_max: 2.5
+        })
+        console.log('Metastasis overlay loaded (red, opacity=0.7)')
+      } catch (err) {
+        console.error('Failed to load AI overlay NIfTI:', err)
+      }
     }
 
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.onload = () => setAiOverlayImage(img)
-    img.onerror = () => {
-      console.error('Failed to load AI overlay:', overlayUrl)
-      setAiOverlayImage(null)
-    }
-    img.src = overlayUrl
-
-    return () => {
-      img.onload = null
-      img.onerror = null
-    }
-  }, [overlayUrl, showOverlay])
+    loadOverlay()
+  }, [aiOverlayNiftiUrl, showOverlay, volumeLoaded, caseId])
 
   // 마우스 휠 핸들러
   const handleWheel = useCallback((e) => {
@@ -319,24 +376,7 @@ export function NiiVueCanvas({
     return filterLesionsBySlice(lesions, currentSlice)
   }, [lesions, currentSlice])
 
-  // AI Overlay 캔버스 렌더링
-  useEffect(() => {
-    const aiCanvas = aiOverlayCanvasRef.current
-    const mainCanvas = canvasRef.current
-    if (!aiCanvas || !mainCanvas) return
-
-    // 캔버스 크기 동기화
-    aiCanvas.width = mainCanvas.clientWidth
-    aiCanvas.height = mainCanvas.clientHeight
-
-    const ctx = aiCanvas.getContext('2d')
-    ctx.clearRect(0, 0, aiCanvas.width, aiCanvas.height)
-
-    // AI Overlay 이미지 그리기
-    if (aiOverlayImage && showOverlay) {
-      ctx.drawImage(aiOverlayImage, 0, 0, aiCanvas.width, aiCanvas.height)
-    }
-  }, [aiOverlayImage, showOverlay, volumeLoaded])
+  // Note: AI Overlay는 이제 NiiVue 볼륨으로 직접 렌더링됨 (PNG 캔버스 방식 제거)
 
   // 병변 마커 오버레이 렌더링
   useEffect(() => {
@@ -424,12 +464,7 @@ export function NiiVueCanvas({
         style={{ display: 'block' }}
       />
 
-      {/* AI Overlay 캔버스 (CT 위, 병변 마커 아래) */}
-      <canvas
-        ref={aiOverlayCanvasRef}
-        className="absolute inset-0 pointer-events-none"
-        style={{ width: '100%', height: '100%' }}
-      />
+      {/* AI Overlay는 NiiVue 볼륨으로 직접 렌더링됨 */}
 
       {/* 병변 마커 오버레이 캔버스 */}
       <canvas

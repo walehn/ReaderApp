@@ -111,18 +111,11 @@ class NIfTIService:
         케이스 ID로 AI 확률맵 파일 경로 반환
 
         Args:
-            case_id: 케이스 ID
+            case_id: 케이스 ID (pos_* 또는 neg_* 형식)
 
         Returns:
             파일 경로 또는 None
         """
-        # Legacy 케이스
-        if case_id.startswith("case_"):
-            filepath = self.cases_dir / case_id / "ai_prob.nii.gz"
-            if filepath.exists():
-                return filepath
-            return None
-
         # Dataset positive
         if case_id.startswith("pos_"):
             base_id = case_id[4:]  # "enriched_001_10667525"
@@ -372,7 +365,7 @@ class NIfTIService:
 
         # Label 슬라이스 추출
         label_slice = ai_label[:, :, z].T
-        label_slice = np.flipud(label_slice)
+        label_slice = np.flipud(label_slice)  # Y축 반전 (NiiVue 좌표계 맞춤)
 
         # label == 2 (metastasis)인 영역만 마스킹
         mask = label_slice == 2

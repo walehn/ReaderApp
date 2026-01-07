@@ -14,16 +14,21 @@ NIfTI Router - Reader Study
 
 보안:
   - UNAIDED 세션에서 /nifti/overlay 호출 시 403 반환
+  - DB 기반 세션 모드 검증 (Phase 3)
 ============================================================================
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse, StreamingResponse
 from typing import Literal
 from pathlib import Path
+from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.services.nifti_service import nifti_service
-from app.services.session_service import session_service
+from app.core.dependencies import get_db
+from app.models.database import Reader, StudySession
 
 router = APIRouter(prefix="/nifti", tags=["NIfTI"])
 
@@ -71,16 +76,17 @@ async def get_nifti_volume(
 @router.get("/overlay")
 async def get_nifti_overlay(
     case_id: str = Query(..., description="케이스 ID"),
-    reader_id: str = Query(..., description="Reader ID (모드 검증용)"),
-    session_id: str = Query(..., description="Session ID (모드 검증용)")
+    reader_id: str = Query(..., description="Reader Code (예: R01)"),
+    session_id: str = Query(..., description="Session Code (예: S1, S2)"),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     AI 확률맵 NIfTI 파일 스트리밍 (AIDED 모드 전용)
 
     Parameters:
         case_id: 케이스 ID
-        reader_id: Reader ID
-        session_id: Session ID
+        reader_id: Reader Code (예: R01)
+        session_id: Session Code (예: S1, S2)
 
     Returns:
         AI 확률맵 NIfTI 파일 (.nii.gz) 스트리밍 응답
@@ -89,8 +95,10 @@ async def get_nifti_overlay(
         403: UNAIDED 세션에서 호출 시
         404: AI 확률맵 없음
     """
-    # 세션 모드 검증 - UNAIDED면 403
-    if not session_service.validate_ai_access(reader_id, session_id):
+    # DB 기반 세션 모드 검증
+    # reader_code와 session_code로 세션을 찾아서 현재 블록의 모드 확인
+    is_aided = await _validate_aided_mode_db(db, reader_id, session_id)
+    if not is_aided:
         raise HTTPException(
             status_code=403,
             detail="AI overlay is not available in UNAIDED mode"
@@ -117,6 +125,74 @@ async def get_nifti_overlay(
             "Access-Control-Expose-Headers": "X-Case-Id"
         }
     )
+
+
+async def _validate_aided_mode_db(
+    db: AsyncSession,
+    reader_code: str,
+    session_code: str
+) -> bool:
+    """
+    DB 기반으로 현재 세션이 AIDED 모드인지 검증
+
+    Args:
+        db: DB 세션
+        reader_code: Reader Code (예: R01)
+        session_code: Session Code (예: S1, S2)
+
+    Returns:
+        True if current block is AIDED mode
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Reader 조회
+    logger.info(f"[OVERLAY DEBUG] Looking for reader: {reader_code}, session: {session_code}")
+    reader_result = await db.execute(
+        select(Reader).where(Reader.reader_code == reader_code)
+    )
+    reader = reader_result.scalar_one_or_none()
+    if reader is None:
+        logger.warning(f"[OVERLAY DEBUG] Reader not found: {reader_code}")
+        return False
+    logger.info(f"[OVERLAY DEBUG] Found reader id={reader.id}")
+
+    # Session 조회 (해당 리더의 해당 session_code)
+    session_result = await db.execute(
+        select(StudySession)
+        .options(selectinload(StudySession.progress))
+        .where(
+            and_(
+                StudySession.reader_id == reader.id,
+                StudySession.session_code == session_code
+            )
+        )
+    )
+    session = session_result.scalar_one_or_none()
+    if session is None:
+        logger.warning(f"[OVERLAY DEBUG] Session not found for reader={reader.id}, session_code={session_code}")
+        return False
+
+    logger.info(f"[OVERLAY DEBUG] Found session id={session.id}, block_a={session.block_a_mode}, block_b={session.block_b_mode}")
+
+    # 현재 블록의 모드 확인
+    progress = session.progress
+    if progress is None:
+        # 세션이 시작되지 않았으면 Block A로 가정
+        current_block = "A"
+        logger.info(f"[OVERLAY DEBUG] No progress, assuming block A")
+    else:
+        current_block = progress.current_block
+        logger.info(f"[OVERLAY DEBUG] Current block: {current_block}")
+
+    # 현재 블록에 따른 모드 반환
+    if current_block == "A":
+        is_aided = session.block_a_mode == "AIDED"
+    else:
+        is_aided = session.block_b_mode == "AIDED"
+
+    logger.info(f"[OVERLAY DEBUG] Result: is_aided={is_aided}")
+    return is_aided
 
 
 @router.get("/info")
