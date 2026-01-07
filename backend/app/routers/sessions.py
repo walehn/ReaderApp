@@ -216,6 +216,9 @@ async def enter_session(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except RuntimeError as e:
+        # Lock 설정 실패 등 내부 오류 처리
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     # 감사 로그
     action = "SESSION_START" if result["is_new_session"] else "SESSION_RESUME"
