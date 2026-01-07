@@ -222,16 +222,24 @@ class CaseDiscoveryService:
         shuffle: bool = True
     ) -> Dict:
         """
-        세션/블록별 케이스 자동 할당 (Stratified Allocation)
+        세션/블록별 케이스 자동 할당 (Crossover Design)
 
-        각 블록에서 positive/negative 비율이 전체 비율과 동일하게 유지됩니다.
-        예: 전체가 pos 40개, neg 80개 (1:2 비율)이면
-            각 블록도 1:2 비율로 할당 (블록당 15개면 pos 5, neg 10)
+        Crossover 연구 설계를 지원합니다:
+        - 모든 세션이 전체 케이스를 포함 (세션당 total_cases개)
+        - 각 블록은 전체 케이스를 블록 수로 나눈 만큼 포함
+        - 모든 세션에서 동일한 블록 파트 사용 (순서만 다름)
+        - 이를 통해 모든 케이스가 AIDED/UNAIDED 모두 평가됨
+
+        예: 전체 120개 케이스 (pos 40, neg 80), 2세션, 2블록
+            - 세션당 120개 케이스
+            - 블록당 60개 케이스 (pos 20, neg 40)
+            - S1 block_a = S2 block_a (동일한 파트, 순서만 다름)
+            - S1 block_b = S2 block_b (동일한 파트, 순서만 다름)
 
         Args:
             num_sessions: 총 세션 수
             num_blocks: 블록 수 (기본 2)
-            shuffle: 랜덤 셔플 여부
+            shuffle: 랜덤 셔플 여부 (블록 내 순서)
 
         Returns:
             {
@@ -247,22 +255,22 @@ class CaseDiscoveryService:
                 }
             }
         """
+        # 케이스 ID 조회 (초기 셔플은 블록 파트 생성 전에 한 번만)
         positive_ids, negative_ids = self.get_case_ids_by_category(shuffle=shuffle)
 
         total_positive = len(positive_ids)
         total_negative = len(negative_ids)
         total_cases = total_positive + total_negative
-        total_blocks = num_sessions * num_blocks
 
-        # 블록당 positive/negative 수 계산 (비율 유지)
-        pos_per_block = total_positive // total_blocks
-        neg_per_block = total_negative // total_blocks
+        # 블록당 positive/negative 수 계산 (세션 수와 무관, 블록 수로만 나눔)
+        pos_per_block = total_positive // num_blocks
+        neg_per_block = total_negative // num_blocks
         cases_per_block = pos_per_block + neg_per_block
-        cases_per_session = cases_per_block * num_blocks
+        cases_per_session = cases_per_block * num_blocks  # = total_cases (사용 가능한 부분)
 
-        # 사용 가능한 케이스 수
-        usable_positive = pos_per_block * total_blocks
-        usable_negative = neg_per_block * total_blocks
+        # 사용 가능한 케이스 수 (나머지는 버려짐)
+        usable_positive = pos_per_block * num_blocks
+        usable_negative = neg_per_block * num_blocks
         usable_cases = usable_positive + usable_negative
 
         result = {
@@ -276,9 +284,17 @@ class CaseDiscoveryService:
             "sessions": {}
         }
 
-        pos_idx = 0
-        neg_idx = 0
+        # [핵심 1] 블록 파트를 한 번만 생성 (Crossover: 모든 세션에서 동일하게 사용)
+        block_parts = []
+        pos_idx, neg_idx = 0, 0
+        for block_idx in range(num_blocks):
+            part_positive = positive_ids[pos_idx:pos_idx + pos_per_block]
+            part_negative = negative_ids[neg_idx:neg_idx + neg_per_block]
+            block_parts.append(part_positive + part_negative)
+            pos_idx += pos_per_block
+            neg_idx += neg_per_block
 
+        # [핵심 2] 모든 세션에 동일한 파트 할당, 블록 내 순서만 세션별로 다르게 셔플
         for session_num in range(1, num_sessions + 1):
             session_code = f"S{session_num}"
             blocks = {}
@@ -287,19 +303,14 @@ class CaseDiscoveryService:
                 block_name = chr(ord('A') + block_idx)  # 'A', 'B', 'C', ...
                 block_key = f"block_{block_name.lower()}"
 
-                # 이 블록에 할당할 positive/negative 케이스 선택
-                block_positive = positive_ids[pos_idx:pos_idx + pos_per_block]
-                block_negative = negative_ids[neg_idx:neg_idx + neg_per_block]
+                # 동일한 케이스 파트 복사
+                block_cases = block_parts[block_idx].copy()
 
-                # 블록 내에서 positive와 negative를 섞어서 순서 랜덤화
-                block_cases = block_positive + block_negative
+                # 블록 내 순서만 세션별로 다르게 셔플
                 if shuffle:
                     random.shuffle(block_cases)
 
                 blocks[block_key] = block_cases
-
-                pos_idx += pos_per_block
-                neg_idx += neg_per_block
 
             result["sessions"][session_code] = blocks
 
@@ -353,6 +364,11 @@ class CaseDiscoveryService:
         """
         케이스 할당 미리보기 (실제 할당 없이 숫자만 계산)
 
+        Crossover Design을 반영하여:
+        - 모든 세션이 전체 케이스를 포함 (세션당 total_cases개)
+        - 각 블록은 전체 케이스를 블록 수로 나눈 만큼 포함
+        - positive/negative 비율 유지
+
         Args:
             num_sessions: 총 세션 수
             num_blocks: 블록 수
@@ -360,27 +376,46 @@ class CaseDiscoveryService:
         Returns:
             {
                 "total_cases": N,
-                "cases_per_session": M,
-                "cases_per_block": K,
+                "usable_cases": M,
+                "cases_per_session": K,
+                "cases_per_block": L,
+                "positive_per_block": P,
+                "negative_per_block": Q,
                 "unused_cases": R
             }
         """
         count = self.get_total_case_count()
+        total_positive = count["positive"]
+        total_negative = count["negative"]
         total = count["total"]
 
-        cases_per_session = total // num_sessions
-        cases_per_block = cases_per_session // num_blocks
-        usable = cases_per_session * num_sessions
-        unused = total - usable
+        # Crossover Design: 세션 수와 무관하게 블록 수로만 나눔
+        pos_per_block = total_positive // num_blocks
+        neg_per_block = total_negative // num_blocks
+        cases_per_block = pos_per_block + neg_per_block
+
+        # 사용 가능한 케이스 (나머지는 버려짐)
+        usable_positive = pos_per_block * num_blocks
+        usable_negative = neg_per_block * num_blocks
+        usable_cases = usable_positive + usable_negative
+
+        # 세션당 케이스 = 블록당 케이스 * 블록 수 = 전체 사용 가능 케이스
+        cases_per_session = cases_per_block * num_blocks
+
+        unused = total - usable_cases
 
         return {
             "total_cases": total,
-            "positive_cases": count["positive"],
-            "negative_cases": count["negative"],
+            "positive_cases": total_positive,
+            "negative_cases": total_negative,
+            "usable_cases": usable_cases,
             "num_sessions": num_sessions,
             "num_blocks": num_blocks,
             "cases_per_session": cases_per_session,
             "cases_per_block": cases_per_block,
+            "positive_per_block": pos_per_block,
+            "negative_per_block": neg_per_block,
+            "ratio": f"{pos_per_block}:{neg_per_block}",
             "unused_cases": unused
         }
 
