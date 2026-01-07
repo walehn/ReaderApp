@@ -141,6 +141,11 @@ export default function ViewerPage() {
     if (sessionId) {
       enterSession()
     }
+
+    // cleanup: 페이지 언마운트 시 타이머 정지
+    return () => {
+      timer.stop()
+    }
   }, [sessionId, getToken])
 
   // 케이스 변경 시 초기화

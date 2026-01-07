@@ -57,18 +57,32 @@ export function SliceCanvas({
   useEffect(() => {
     if (!imageUrl) return
 
+    let cancelled = false
     setImageLoading(true)
+
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => {
-      setImage(img)
-      setImageLoading(false)
+      if (!cancelled) {
+        setImage(img)
+        setImageLoading(false)
+      }
     }
     img.onerror = () => {
-      setImageLoading(false)
-      console.error('Failed to load image:', imageUrl)
+      if (!cancelled) {
+        setImageLoading(false)
+        console.error('Failed to load image:', imageUrl)
+      }
     }
     img.src = imageUrl
+
+    // cleanup: 이전 이미지 로드 중단 및 메모리 해제
+    return () => {
+      cancelled = true
+      img.onload = null
+      img.onerror = null
+      img.src = ''  // 로드 중단
+    }
   }, [imageUrl])
 
   // 오버레이 로드
@@ -78,11 +92,24 @@ export function SliceCanvas({
       return
     }
 
+    let cancelled = false
     const img = new Image()
     img.crossOrigin = 'anonymous'
-    img.onload = () => setOverlay(img)
-    img.onerror = () => setOverlay(null)
+    img.onload = () => {
+      if (!cancelled) setOverlay(img)
+    }
+    img.onerror = () => {
+      if (!cancelled) setOverlay(null)
+    }
     img.src = overlayUrl
+
+    // cleanup: 이전 오버레이 로드 중단 및 메모리 해제
+    return () => {
+      cancelled = true
+      img.onload = null
+      img.onerror = null
+      img.src = ''
+    }
   }, [overlayUrl, showOverlay])
 
   // 캔버스 그리기
