@@ -76,11 +76,13 @@ export function NiiVueCanvas({
   const canvasRef = useRef(null)
   const nvRef = useRef(null)
   const overlayCanvasRef = useRef(null)
+  const aiOverlayCanvasRef = useRef(null)  // AI Overlay 캔버스
   const onSliceChangeRef = useRef(onSliceChange)  // 최신 콜백 참조용
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
   const [maxSlice, setMaxSlice] = useState(0)
+  const [aiOverlayImage, setAiOverlayImage] = useState(null)  // AI Overlay 이미지
 
   // W/L 드래그 상태
   const [isDragging, setIsDragging] = useState(false)
@@ -214,6 +216,28 @@ export function NiiVueCanvas({
     }
   }, [currentSlice, volumeLoaded, maxSlice])
 
+  // AI Overlay 이미지 로드
+  useEffect(() => {
+    if (!overlayUrl || !showOverlay) {
+      setAiOverlayImage(null)
+      return
+    }
+
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => setAiOverlayImage(img)
+    img.onerror = () => {
+      console.error('Failed to load AI overlay:', overlayUrl)
+      setAiOverlayImage(null)
+    }
+    img.src = overlayUrl
+
+    return () => {
+      img.onload = null
+      img.onerror = null
+    }
+  }, [overlayUrl, showOverlay])
+
   // 마우스 휠 핸들러
   const handleWheel = useCallback((e) => {
     e.preventDefault()
@@ -294,6 +318,25 @@ export function NiiVueCanvas({
   const currentLesions = useMemo(() => {
     return filterLesionsBySlice(lesions, currentSlice)
   }, [lesions, currentSlice])
+
+  // AI Overlay 캔버스 렌더링
+  useEffect(() => {
+    const aiCanvas = aiOverlayCanvasRef.current
+    const mainCanvas = canvasRef.current
+    if (!aiCanvas || !mainCanvas) return
+
+    // 캔버스 크기 동기화
+    aiCanvas.width = mainCanvas.clientWidth
+    aiCanvas.height = mainCanvas.clientHeight
+
+    const ctx = aiCanvas.getContext('2d')
+    ctx.clearRect(0, 0, aiCanvas.width, aiCanvas.height)
+
+    // AI Overlay 이미지 그리기
+    if (aiOverlayImage && showOverlay) {
+      ctx.drawImage(aiOverlayImage, 0, 0, aiCanvas.width, aiCanvas.height)
+    }
+  }, [aiOverlayImage, showOverlay, volumeLoaded])
 
   // 병변 마커 오버레이 렌더링
   useEffect(() => {
@@ -379,6 +422,13 @@ export function NiiVueCanvas({
               : 'cursor-default'
         }`}
         style={{ display: 'block' }}
+      />
+
+      {/* AI Overlay 캔버스 (CT 위, 병변 마커 아래) */}
+      <canvas
+        ref={aiOverlayCanvasRef}
+        className="absolute inset-0 pointer-events-none"
+        style={{ width: '100%', height: '100%' }}
       />
 
       {/* 병변 마커 오버레이 캔버스 */}

@@ -6,15 +6,18 @@
 - Windows 10/11
 
 ### Python 가상환경
-- **위치**: `E:\ReaderApp\venv\`
-- **Python 버전**: 3.12.7
+- **위치**: `D:\ReaderApp\ReaderApp\`
+- **Python 버전**: 3.13.5
 - **활성화 방법**:
   ```powershell
   # PowerShell
-  E:\ReaderApp\venv\Scripts\Activate.ps1
-  
+  D:\ReaderApp\ReaderApp\Scripts\Activate.ps1
+
   # CMD
-  E:\ReaderApp\venv\Scripts\activate.bat
+  D:\ReaderApp\ReaderApp\Scripts\activate.bat
+
+  # Git Bash
+  source D:/ReaderApp/ReaderApp/Scripts/activate
   ```
 - **패키지 설치**: `pip install -r backend/requirements.txt`
 

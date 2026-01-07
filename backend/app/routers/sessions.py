@@ -365,11 +365,12 @@ async def reset_session(
 
     세션의 진행 상태를 초기화하고 다시 시작할 수 있도록 합니다.
     케이스 순서는 재진입 시 새로 생성됩니다.
+    해당 세션의 제출된 결과(study_results)도 함께 삭제됩니다.
     """
     service = StudySessionService(db)
 
     try:
-        await service.reset_session(session_id)
+        deleted_count = await service.reset_session(session_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -380,10 +381,13 @@ async def reset_session(
         reader_id=admin.id,
         request=request,
         resource_type="session",
-        resource_id=str(session_id)
+        resource_id=str(session_id),
+        details=f"deleted {deleted_count['results']} results, {deleted_count['lesions']} lesions"
     )
 
-    return MessageResponse(message=f"세션 {session_id}이 초기화되었습니다")
+    return MessageResponse(
+        message=f"세션 {session_id}이 초기화되었습니다 (결과 {deleted_count['results']}건, 병변 {deleted_count['lesions']}건 삭제)"
+    )
 
 
 @router.delete("/{session_id}", response_model=MessageResponse)

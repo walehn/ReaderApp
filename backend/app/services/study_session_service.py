@@ -37,7 +37,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.database import Reader, StudySession, SessionProgress, AuditLog
+from app.models.database import Reader, StudySession, SessionProgress, AuditLog, StudyResult, LesionMark
 from app.core.security import utc_now
 from app.services.study_config_service import StudyConfigService
 
@@ -176,8 +176,11 @@ class StudySessionService:
             config_service = StudyConfigService(self.db)
             await config_service.trigger_lock_if_needed(reader_id)
 
-            # 세션 객체 새로고침 (trigger_lock 내부 commit으로 인해 만료됨)
-            await self.db.refresh(session)
+            # 세션 객체 새로고침 (trigger_lock 내부 commit/rollback으로 인해 만료됨)
+            # 주의: refresh()는 관계(relationship)를 재로드하지 않으므로 전체 쿼리 재실행
+            session = await self.get_session_by_id(session_id)
+            if session is None:
+                raise ValueError("세션을 찾을 수 없습니다 (새로고침 실패)")
 
             # 케이스 순서 랜덤 셔플
             shuffled_a = block_a_cases.copy()
@@ -490,15 +493,57 @@ class StudySessionService:
         except (ValueError, PermissionError):
             return False
 
-    async def reset_session(self, session_id: int) -> None:
+    async def reset_session(self, session_id: int, delete_results: bool = True) -> dict:
         """
         세션 초기화 (관리자용)
 
         진행 상태를 초기화하고 케이스 순서를 재생성할 수 있도록 합니다.
+
+        Args:
+            session_id: 세션 ID
+            delete_results: True면 해당 세션의 제출된 결과도 삭제 (기본값: True)
+
+        Returns:
+            삭제된 결과 수 정보
         """
         session = await self.get_session_by_id(session_id)
         if session is None:
             raise ValueError("세션을 찾을 수 없습니다")
+
+        deleted_count = {"results": 0, "lesions": 0}
+
+        # 제출된 결과 삭제 (옵션)
+        if delete_results:
+            # Reader 정보 조회 (reader_code 가져오기)
+            reader_result = await self.db.execute(
+                select(Reader).where(Reader.id == session.reader_id)
+            )
+            reader = reader_result.scalar_one_or_none()
+
+            if reader:
+                # 해당 세션의 study_results 조회
+                results_query = await self.db.execute(
+                    select(StudyResult).where(
+                        and_(
+                            StudyResult.reader_id == reader.reader_code,
+                            StudyResult.session_id == session.session_code
+                        )
+                    )
+                )
+                results = results_query.scalars().all()
+
+                # 관련 lesion_marks 삭제
+                for result in results:
+                    lesions_query = await self.db.execute(
+                        select(LesionMark).where(LesionMark.result_id == result.id)
+                    )
+                    lesions = lesions_query.scalars().all()
+                    for lesion in lesions:
+                        await self.db.delete(lesion)
+                        deleted_count["lesions"] += 1
+
+                    await self.db.delete(result)
+                    deleted_count["results"] += 1
 
         # 케이스 순서 초기화
         session.case_order_block_a = None
@@ -510,6 +555,8 @@ class StudySessionService:
             await self.db.delete(session.progress)
 
         await self.db.commit()
+
+        return deleted_count
 
     async def delete_session(self, session_id: int) -> dict:
         """

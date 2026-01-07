@@ -329,14 +329,49 @@ export default function AdminPage() {
     }
   }
 
-  // 세션 삭제
+  // 세션 삭제 (할당 취소)
   const handleDeleteSession = async (sessionId) => {
-    if (!confirm('정말 이 세션 할당을 취소하시겠습니까?')) return
+    const confirmed = confirm(
+      '⚠️ 세션 할당을 취소하시겠습니까?\n\n' +
+      '이 작업은 다음 데이터를 삭제합니다:\n' +
+      '• 세션 할당 정보\n' +
+      '• 진행 상태\n\n' +
+      '※ 제출된 결과(study_results)는 유지됩니다.'
+    )
+    if (!confirmed) return
     try {
       setLoading(true)
       setError(null)
       await adminApi.deleteSession(getToken(), sessionId)
       setSuccessMessage('세션 할당이 취소되었습니다')
+      // 세션 목록 새로고침
+      const details = await adminApi.getReader(getToken(), sessionTarget.id)
+      setSessionTargetDetails(details)
+      loadReaders()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // 세션 초기화 (리셋) - 제출된 결과도 삭제
+  const handleResetSession = async (sessionId) => {
+    const confirmed = confirm(
+      '⚠️ 세션을 초기화하시겠습니까?\n\n' +
+      '이 작업은 다음 데이터를 삭제합니다:\n' +
+      '• 진행 상태 (처음부터 다시 시작)\n' +
+      '• 케이스 순서 (재진입 시 새로 생성)\n' +
+      '• 제출된 결과 (study_results) ⚠️\n' +
+      '• 병변 마커 (lesion_marks) ⚠️\n\n' +
+      '※ 이 작업은 되돌릴 수 없습니다!'
+    )
+    if (!confirmed) return
+    try {
+      setLoading(true)
+      setError(null)
+      await adminApi.resetSession(getToken(), sessionId)
+      setSuccessMessage('세션이 초기화되었습니다 (제출된 결과 포함)')
       // 세션 목록 새로고침
       const details = await adminApi.getReader(getToken(), sessionTarget.id)
       setSessionTargetDetails(details)
@@ -1480,13 +1515,24 @@ export default function AdminPage() {
                           Block A: {session.block_a_mode} / Block B: {session.block_b_mode}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleDeleteSession(session.session_id)}
-                        disabled={loading}
-                        className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-                      >
-                        할당 취소
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleResetSession(session.session_id)}
+                          disabled={loading}
+                          className="px-3 py-1 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
+                          title="진행 상태와 제출된 결과를 모두 삭제하고 처음부터 다시 시작"
+                        >
+                          초기화
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSession(session.session_id)}
+                          disabled={loading}
+                          className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+                          title="세션 할당을 취소 (제출된 결과는 유지)"
+                        >
+                          할당 취소
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

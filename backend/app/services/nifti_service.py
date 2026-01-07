@@ -89,10 +89,10 @@ class NIfTIService:
             # pos_enriched_001_10667525 -> enriched_001_10667525
             base_id = case_id[4:]  # "pos_" 제거
             # dataset/positive/에서 매칭되는 파일 찾기
+            # _0000.nii.gz 파일만 사용 (실제 CT 이미지, 마스크 파일 제외)
             for file_path in self.positive_dir.iterdir():
                 if file_path.name.startswith(base_id) and series in file_path.name:
-                    # _0000.nii.gz 파일 제외 (nnU-Net 포맷)
-                    if "_0000.nii.gz" not in file_path.name:
+                    if "_0000.nii.gz" in file_path.name:
                         return file_path
             return None
 

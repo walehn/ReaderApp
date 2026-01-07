@@ -10,13 +10,17 @@ Case Discovery Service - Reader Study
   - allocate_cases_to_session(): 세션/블록별 케이스 자동 할당
   - get_case_file_paths(): 케이스 ID로 실제 파일 경로 반환
 
-파일 명명 패턴:
-  - positive: enriched_{num}_{patient_id}_{date}_{baseline|followup}.nii.gz
-  - negative: neg_{num}_{patient_id}_{date}_{baseline|followup}.nii.gz
+파일 명명 패턴 (접두사 무관, 폴더 내 모든 이미지 파일 스캔):
+  - positive: {any_prefix}_{date}_{baseline|followup}_0000.nii.gz (실제 CT 이미지)
+    예: enriched_001_10667525_20240909_baseline_0000.nii.gz
+        sequential_001_11580277_20240923_baseline_0000.nii.gz
+        test_012_30773712_20230125_baseline_0000.nii.gz
+  - negative: {any_prefix}_{date}_{baseline|followup}.nii.gz
+    예: neg_008_11155933_20240625_baseline.nii.gz
 
 케이스 ID 형식:
-  - positive: "pos_enriched_001_10667525"
-  - negative: "neg_008_11155933"
+  - positive: "pos_{prefix}_{num}_{patient_id}" (예: "pos_enriched_001_10667525")
+  - negative: "{prefix}_{num}_{patient_id}" (예: "neg_008_11155933")
 
 사용 예시:
   from app.services.case_discovery_service import case_discovery_service
@@ -56,14 +60,18 @@ class CaseDiscoveryService:
         self.negative_dir = settings.NEGATIVE_DIR
         self.ai_label_dir = settings.AI_LABEL_DIR
 
-        # 파일 패턴 정규식
-        # positive: enriched_001_10667525_20240909_baseline.nii.gz
-        # negative: neg_008_11155933_20240625_baseline.nii.gz
+        # 파일 패턴 정규식 (접두사 무관, 폴더 내 모든 이미지 파일 스캔)
+        # positive: {prefix}_{num}_{patient_id}_{date}_{baseline|followup}_0000.nii.gz
+        #   - enriched_001_10667525_20240909_baseline_0000.nii.gz
+        #   - sequential_001_11580277_20240923_baseline_0000.nii.gz
+        #   - test_012_30773712_20230125_baseline_0000.nii.gz
+        # negative: {prefix}_{num}_{patient_id}_{date}_{baseline|followup}.nii.gz
+        #   - neg_008_11155933_20240625_baseline.nii.gz
         self.positive_pattern = re.compile(
-            r'^(enriched_\d+_\d+)_\d+_(baseline|followup)\.nii\.gz$'
+            r'^(.+)_\d{8}_(baseline|followup)_0000\.nii\.gz$'
         )
         self.negative_pattern = re.compile(
-            r'^(neg_\d+_\d+)_\d+_(baseline|followup)\.nii\.gz$'
+            r'^(.+)_\d{8}_(baseline|followup)\.nii\.gz$'
         )
 
     def _scan_folder(self, folder: Path, pattern: re.Pattern, prefix: str) -> Dict[str, Dict[str, Path]]:
@@ -187,6 +195,26 @@ class CaseDiscoveryService:
 
         return all_ids
 
+    def get_case_ids_by_category(self, shuffle: bool = False) -> Tuple[List[str], List[str]]:
+        """
+        카테고리별 케이스 ID 목록 반환
+
+        Args:
+            shuffle: True면 각 카테고리 내에서 랜덤 셔플
+
+        Returns:
+            (positive_ids, negative_ids) 튜플
+        """
+        cases = self.scan_dataset_cases()
+        positive_ids = [c.case_id for c in cases["positive"]]
+        negative_ids = [c.case_id for c in cases["negative"]]
+
+        if shuffle:
+            random.shuffle(positive_ids)
+            random.shuffle(negative_ids)
+
+        return positive_ids, negative_ids
+
     def allocate_cases_to_session(
         self,
         num_sessions: int,
@@ -194,7 +222,11 @@ class CaseDiscoveryService:
         shuffle: bool = True
     ) -> Dict:
         """
-        세션/블록별 케이스 자동 할당
+        세션/블록별 케이스 자동 할당 (Stratified Allocation)
+
+        각 블록에서 positive/negative 비율이 전체 비율과 동일하게 유지됩니다.
+        예: 전체가 pos 40개, neg 80개 (1:2 비율)이면
+            각 블록도 1:2 비율로 할당 (블록당 15개면 pos 5, neg 10)
 
         Args:
             num_sessions: 총 세션 수
@@ -206,6 +238,8 @@ class CaseDiscoveryService:
                 "total_cases": N,
                 "cases_per_session": M,
                 "cases_per_block": K,
+                "positive_per_block": P,
+                "negative_per_block": Q,
                 "sessions": {
                     "S1": {"block_a": [...], "block_b": [...]},
                     "S2": {"block_a": [...], "block_b": [...]},
@@ -213,25 +247,38 @@ class CaseDiscoveryService:
                 }
             }
         """
-        all_case_ids = self.get_all_case_ids(shuffle=shuffle)
-        total_cases = len(all_case_ids)
+        positive_ids, negative_ids = self.get_case_ids_by_category(shuffle=shuffle)
 
-        # 세션당 케이스 수 계산 (균등 분배)
-        cases_per_session = total_cases // num_sessions
-        cases_per_block = cases_per_session // num_blocks
+        total_positive = len(positive_ids)
+        total_negative = len(negative_ids)
+        total_cases = total_positive + total_negative
+        total_blocks = num_sessions * num_blocks
 
-        # 나머지 케이스는 버림 (균등 분배를 위해)
-        usable_cases = cases_per_session * num_sessions
+        # 블록당 positive/negative 수 계산 (비율 유지)
+        pos_per_block = total_positive // total_blocks
+        neg_per_block = total_negative // total_blocks
+        cases_per_block = pos_per_block + neg_per_block
+        cases_per_session = cases_per_block * num_blocks
+
+        # 사용 가능한 케이스 수
+        usable_positive = pos_per_block * total_blocks
+        usable_negative = neg_per_block * total_blocks
+        usable_cases = usable_positive + usable_negative
 
         result = {
             "total_cases": total_cases,
             "usable_cases": usable_cases,
             "cases_per_session": cases_per_session,
             "cases_per_block": cases_per_block,
+            "positive_per_block": pos_per_block,
+            "negative_per_block": neg_per_block,
+            "ratio": f"{pos_per_block}:{neg_per_block}",
             "sessions": {}
         }
 
-        idx = 0
+        pos_idx = 0
+        neg_idx = 0
+
         for session_num in range(1, num_sessions + 1):
             session_code = f"S{session_num}"
             blocks = {}
@@ -240,10 +287,19 @@ class CaseDiscoveryService:
                 block_name = chr(ord('A') + block_idx)  # 'A', 'B', 'C', ...
                 block_key = f"block_{block_name.lower()}"
 
-                start = idx
-                end = idx + cases_per_block
-                blocks[block_key] = all_case_ids[start:end]
-                idx = end
+                # 이 블록에 할당할 positive/negative 케이스 선택
+                block_positive = positive_ids[pos_idx:pos_idx + pos_per_block]
+                block_negative = negative_ids[neg_idx:neg_idx + neg_per_block]
+
+                # 블록 내에서 positive와 negative를 섞어서 순서 랜덤화
+                block_cases = block_positive + block_negative
+                if shuffle:
+                    random.shuffle(block_cases)
+
+                blocks[block_key] = block_cases
+
+                pos_idx += pos_per_block
+                neg_idx += neg_per_block
 
             result["sessions"][session_code] = blocks
 
