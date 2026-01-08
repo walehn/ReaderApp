@@ -100,9 +100,15 @@ app = FastAPI(
 # =============================================================================
 
 # CORS 설정 (개발용 - 프로덕션에서는 제한 필요)
+# 외부 접속 허용을 위해 다양한 origin 추가
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://192.168.0.5:5173",   # 내부 IP
+        "http://10.10.153.48:5173",  # 외부 IP (공유기)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
