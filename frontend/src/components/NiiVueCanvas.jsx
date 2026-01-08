@@ -184,15 +184,27 @@ export function NiiVueCanvas({
 
     createInstance()
 
-    // 컴포넌트 언마운트 시에만 cleanup (WebGL 컨텍스트 해제)
+    // 컴포넌트 언마운트 시에만 cleanup (볼륨 제거 + WebGL 컨텍스트 해제)
     return () => {
       mounted = false
       if (nvRef.current) {
         try {
-          // 콜백 제거
-          nvRef.current.onLocationChange = null
-          // WebGL 컨텍스트 강제 손실 (GPU 리소스 반환)
-          const ext = nvRef.current.gl?.getExtension('WEBGL_lose_context')
+          const nv = nvRef.current
+
+          // 1. 콜백 제거
+          nv.onLocationChange = null
+
+          // 2. 볼륨 역순 제거 (TypedArray 메모리 해제)
+          // ★ 메모리 최적화: removeVolumeByIndex()로 GPU/CPU 리소스 명시적 해제
+          if (nv.volumes && nv.volumes.length > 0) {
+            console.log('[NiiVue] Removing', nv.volumes.length, 'volumes on unmount')
+            while (nv.volumes.length > 0) {
+              nv.removeVolumeByIndex(nv.volumes.length - 1)
+            }
+          }
+
+          // 3. WebGL 컨텍스트 강제 손실 (GPU 리소스 반환)
+          const ext = nv.gl?.getExtension('WEBGL_lose_context')
           if (ext) {
             ext.loseContext()
             console.log('[NiiVue] loseContext() called - instance destroyed')
@@ -307,20 +319,22 @@ export function NiiVueCanvas({
   // AI Overlay NIfTI 로드 (NiiVue 오버레이 볼륨)
   // - Liver mask (label=1): 녹색
   // - Metastasis (label=2): 빨간색
+  // ★ 메모리 최적화: cancelled 플래그로 케이스 전환 시 stale 요청 무시
   useEffect(() => {
     const nv = nvRef.current
     if (!nv || !volumeLoaded) return
 
+    let cancelled = false  // 취소 플래그
+
     const loadOverlay = async () => {
-      // 기존 오버레이 볼륨 제거 (인덱스 1 이상, 객체 기반 안전 제거)
-      if (nv.volumes && nv.volumes.length > 1) {
-        const overlayVolumes = nv.volumes.slice(1)  // 메인 볼륨(0) 제외 복사
-        for (const vol of overlayVolumes) {
-          try {
-            nv.removeVolume(vol)
-          } catch (e) {
-            console.warn('[NiiVue] Overlay volume removal failed:', e)
-          }
+      // 기존 오버레이 볼륨 제거 (인덱스 기반으로 통일 - 더 안전함)
+      // ★ removeVolumeByIndex() 사용으로 일관성 확보
+      while (nv.volumes && nv.volumes.length > 1) {
+        try {
+          nv.removeVolumeByIndex(nv.volumes.length - 1)
+        } catch (e) {
+          console.warn('[NiiVue] Overlay volume removal failed:', e)
+          break  // 무한 루프 방지
         }
       }
 
@@ -340,6 +354,12 @@ export function NiiVueCanvas({
           cal_min: 0.5,
           cal_max: 1.5
         })
+
+        // 취소 확인 (케이스 전환 시 이전 요청 무시)
+        if (cancelled) {
+          console.log('[NiiVue] Overlay load cancelled after liver mask')
+          return
+        }
         console.log('Liver mask overlay loaded (green, opacity=0.15)')
 
         // 2. Metastasis 오버레이 (label=2, 선명한 빨간색)
@@ -351,13 +371,27 @@ export function NiiVueCanvas({
           cal_min: 1.5,
           cal_max: 2.5
         })
+
+        // 취소 확인
+        if (cancelled) {
+          console.log('[NiiVue] Overlay load cancelled after metastasis')
+          return
+        }
         console.log('Metastasis overlay loaded (red, opacity=0.7)')
+
       } catch (err) {
-        console.error('Failed to load AI overlay NIfTI:', err)
+        if (!cancelled) {
+          console.error('Failed to load AI overlay NIfTI:', err)
+        }
       }
     }
 
     loadOverlay()
+
+    // cleanup: 취소 플래그 설정 (케이스 전환/언마운트 시)
+    return () => {
+      cancelled = true
+    }
   }, [aiOverlayNiftiUrl, showOverlay, volumeLoaded, caseId])
 
   // 마우스 휠 핸들러

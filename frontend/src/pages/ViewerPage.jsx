@@ -22,7 +22,7 @@
  * ============================================================================
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCase } from '../hooks/useCase'
@@ -55,6 +55,14 @@ export default function ViewerPage() {
   const [patientDecision, setPatientDecision] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState(null)
+
+  // ★ 메모리 최적화: 이전 caseId 유지 (Viewer 언마운트 방지)
+  // 케이스 전환 시 currentCase가 잠시 변경되어도 Viewer를 유지하기 위해 사용
+  const prevCaseIdRef = useRef(null)
+  if (currentCase?.case_id) {
+    prevCaseIdRef.current = currentCase.case_id
+  }
+  const stableCaseId = currentCase?.case_id || prevCaseIdRef.current
 
   // 세션 진입
   useEffect(() => {
@@ -277,8 +285,9 @@ export default function ViewerPage() {
     )
   }
 
-  // 현재 케이스가 없는 경우
-  if (!currentCase?.case_id) {
+  // 현재 케이스가 없는 경우 (최초 로드 시에만)
+  // ★ 메모리 최적화: stableCaseId가 있으면 Viewer를 유지 (언마운트 방지)
+  if (!stableCaseId) {
     return (
       <div className="min-h-screen bg-medical-darker flex items-center justify-center">
         <div className="text-center">
@@ -288,7 +297,7 @@ export default function ViewerPage() {
     )
   }
 
-  const isAided = currentCase.mode === 'AIDED'
+  const isAided = currentCase?.mode === 'AIDED'
 
   return (
     <div className="min-h-screen bg-medical-darker p-4">
@@ -308,66 +317,76 @@ export default function ViewerPage() {
             <span className="text-gray-400">{user?.name}</span>
             <span className="text-gray-600 mx-2">|</span>
             <span className={`font-semibold ${isAided ? 'text-yellow-400' : 'text-blue-400'}`}>
-              {currentCase.mode}
+              {currentCase?.mode || '로딩...'}
             </span>
           </div>
         </div>
 
         {/* 진행 상황 */}
         <ProgressBar
-          current={currentCase.case_index + 1}
-          total={currentCase.total_cases_in_block}
-          completedCount={currentCase.case_index}
-          mode={currentCase.mode}
-          sessionInfo={`${sessionInfo?.session_code} - Block ${currentCase.block}`}
+          current={(currentCase?.case_index ?? 0) + 1}
+          total={currentCase?.total_cases_in_block ?? 0}
+          completedCount={currentCase?.case_index ?? 0}
+          mode={currentCase?.mode || 'UNAIDED'}
+          sessionInfo={`${sessionInfo?.session_code} - Block ${currentCase?.block || '?'}`}
         />
 
         {/* 케이스 ID 표시 - 개인정보 보호를 위해 단순 번호만 표시 */}
         <div className="text-center">
           <h2 className="text-xl font-bold text-white">
-            Case {String(currentCase.case_index + 1).padStart(3, '0')}
+            Case {String((currentCase?.case_index ?? 0) + 1).padStart(3, '0')}
           </h2>
           <p className="text-sm text-gray-500">
-            Block {currentCase.block} • 케이스 {currentCase.case_index + 1} / {currentCase.total_cases_in_block}
-            {currentCase.is_last_in_block && ' (마지막)'}
+            Block {currentCase?.block || '?'} • 케이스 {(currentCase?.case_index ?? 0) + 1} / {currentCase?.total_cases_in_block ?? 0}
+            {currentCase?.is_last_in_block && ' (마지막)'}
           </p>
         </div>
 
         {/* 메인 레이아웃 - 뷰어 전체 너비 */}
         <div className="space-y-4">
           {/* 뷰어 영역 (전체 너비) */}
-          <div className="w-full">
-            {caseData.loading ? (
-              <div className="flex items-center justify-center h-96 bg-medical-dark rounded-lg">
+          {/* ★ 메모리 최적화: Viewer를 항상 렌더링하여 NiiVue 인스턴스 유지 */}
+          {/* 로딩/에러 시에도 Viewer를 언마운트하지 않고 오버레이만 표시 */}
+          <div className="w-full relative">
+            {/* 로딩 오버레이 (Viewer 위에 표시) */}
+            {caseData.loading && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-medical-dark/80 rounded-lg">
                 <div className="text-center">
                   <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-2"></div>
                   <p className="text-gray-400">케이스 로딩 중...</p>
                 </div>
               </div>
-            ) : caseData.error ? (
-              <div className="flex items-center justify-center h-96 bg-medical-dark rounded-lg">
+            )}
+
+            {/* 에러 오버레이 */}
+            {caseData.error && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-medical-dark/90 rounded-lg">
                 <p className="text-red-400">{caseData.error}</p>
               </div>
-            ) : (
-              <Viewer
-                caseId={currentCase.case_id}
-                readerId={user?.reader_code}
-                sessionId={sessionInfo?.session_code}
-                isAided={isAided}
-                aiThreshold={sessionInfo?.ai_threshold || 0.30}
-                lesions={caseData.lesions}
-                onAddLesion={caseData.addLesion}
-                currentSlice={caseData.currentSlice}
-                totalSlices={caseData.totalSlices}
-                onSliceChange={caseData.setSlice}
-                wlPreset={caseData.wlPreset}
-                onToggleWL={caseData.toggleWL}
-                aiAvailable={caseData.aiAvailable}
-                customWL={caseData.customWL}
-                onWLChange={caseData.setCustomWL}
-                wlMode={caseData.wlMode}
-              />
             )}
+
+            {/* Viewer는 항상 렌더링 (NiiVue 인스턴스 재사용) */}
+            {/* ★ 메모리 최적화: stableCaseId 사용으로 케이스 전환 시 언마운트 방지 */}
+            {/* ★ key="main-viewer"로 React reconciliation 안정화 */}
+            <Viewer
+              key="main-viewer"
+              caseId={stableCaseId}
+              readerId={user?.reader_code}
+              sessionId={sessionInfo?.session_code}
+              isAided={isAided}
+              aiThreshold={sessionInfo?.ai_threshold || 0.30}
+              lesions={caseData.lesions}
+              onAddLesion={caseData.addLesion}
+              currentSlice={caseData.currentSlice}
+              totalSlices={caseData.totalSlices}
+              onSliceChange={caseData.setSlice}
+              wlPreset={caseData.wlPreset}
+              onToggleWL={caseData.toggleWL}
+              aiAvailable={caseData.aiAvailable}
+              customWL={caseData.customWL}
+              onWLChange={caseData.setCustomWL}
+              wlMode={caseData.wlMode}
+            />
           </div>
 
           {/* 하단 컨트롤 영역 (가운데 정렬) */}
