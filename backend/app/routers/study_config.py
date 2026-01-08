@@ -186,15 +186,17 @@ async def get_public_study_config(
 
     ViewerPage에서 세션/블록 수를 조회하여 케이스 할당에 사용.
     민감한 정보 없이 최소한의 설정만 반환.
+    group_names는 표시용으로 포함 (민감 정보 아님).
 
     Returns:
-        StudyConfigPublicResponse: 공개 연구 설정 (세션 수, 블록 수, 연구명)
+        StudyConfigPublicResponse: 공개 연구 설정 (세션 수, 블록 수, 연구명, 그룹명)
     """
     service = StudyConfigService(db)
-    config = await service.get_or_create_config()
+    config_dict = await service.get_config_dict()
 
     return StudyConfigPublicResponse(
-        total_sessions=config.total_sessions,
-        total_blocks=config.total_blocks,
-        study_name=config.study_name
+        total_sessions=config_dict["total_sessions"],
+        total_blocks=config_dict["total_blocks"],
+        study_name=config_dict["study_name"],
+        group_names=config_dict.get("group_names")
     )

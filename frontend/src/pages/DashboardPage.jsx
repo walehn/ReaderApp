@@ -21,7 +21,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
-import { sessionsApi } from '../services/api'
+import { sessionsApi, api } from '../services/api'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
@@ -30,15 +30,20 @@ export default function DashboardPage() {
   const [sessions, setSessions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [studyConfig, setStudyConfig] = useState(null)
 
-  // 세션 목록 로드
+  // 세션 목록 및 연구 설정 로드
   useEffect(() => {
-    const loadSessions = async () => {
+    const loadData = async () => {
       try {
         setLoading(true)
         setError(null)
-        const data = await sessionsApi.getMySessions(getToken())
-        setSessions(data)
+        const [sessionsData, configData] = await Promise.all([
+          sessionsApi.getMySessions(getToken()),
+          api.getPublicStudyConfig()
+        ])
+        setSessions(sessionsData)
+        setStudyConfig(configData)
       } catch (err) {
         setError(err.message)
       } finally {
@@ -46,7 +51,7 @@ export default function DashboardPage() {
       }
     }
 
-    loadSessions()
+    loadData()
   }, [getToken])
 
   // 로그아웃 처리
@@ -110,7 +115,7 @@ export default function DashboardPage() {
                 <p className="text-white font-medium">{user?.name}</p>
                 <p className="text-sm text-gray-400">
                   {user?.reader_code}
-                  {user?.group && ` • Group ${user.group}`}
+                  {user?.group && ` • ${studyConfig?.group_names?.[`group_${user.group}`] || `Group ${user.group}`}`}
                 </p>
               </div>
               {/* 관리자 버튼 - admin 역할인 경우에만 표시 */}

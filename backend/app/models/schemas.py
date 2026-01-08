@@ -357,10 +357,11 @@ class StudyConfigResponse(BaseModel):
 
 
 class StudyConfigPublicResponse(BaseModel):
-    """공개 연구 설정 (인증 불필요) - 세션/블록 수만 노출"""
+    """공개 연구 설정 (인증 불필요) - 세션/블록 수 및 그룹명 노출"""
     total_sessions: int
     total_blocks: int
     study_name: str
+    group_names: Optional[dict] = None  # {"group_1": "그룹명", ...} - 표시용
 
 
 class StudyConfigUpdateRequest(BaseModel):

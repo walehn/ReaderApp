@@ -72,25 +72,54 @@ export function Viewer({
   // W/L 드래그 모드 활성화 상태
   const [wlDragEnabled, setWlDragEnabled] = useState(false)
 
-  // 동시 스크롤 모드 상태 (기본값: ON)
-  const [syncScroll, setSyncScroll] = useState(true)
+  // 동시 스크롤 모드 상태 (기본값: OFF)
+  const [syncScroll, setSyncScroll] = useState(false)
 
   // Baseline/Followup 개별 슬라이스 상태
   const [baselineSlice, setBaselineSlice] = useState(currentSlice)
   const [followupSlice, setFollowupSlice] = useState(currentSlice)
 
-  // 외부 currentSlice 변경 시 (슬라이더 사용 등) delta 기반 동기화
-  // syncScroll ON: 슬라이더는 followupSlice 기준, baseline은 delta만큼 이동
+  // 키보드 단축키: 화살표(슬라이스 이동), L(동시 스크롤 토글)
   useEffect(() => {
-    if (syncScroll) {
-      const delta = currentSlice - followupSlice
-      if (delta !== 0) {
-        setBaselineSlice(prev => Math.max(0, Math.min(prev + delta, totalSlices - 1)))
-        setFollowupSlice(currentSlice)
+    const handleKeyDown = (e) => {
+      // 입력 필드에서는 무시
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+      // L 키: 동시 스크롤 토글
+      if (e.key === 'l' || e.key === 'L') {
+        e.preventDefault()
+        setSyncScroll(prev => !prev)
+        return
+      }
+
+      // 화살표 키: 슬라이스 이동
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+
+      e.preventDefault()
+      const delta = e.key === 'ArrowUp' ? 1 : -1
+      const clamp = (val) => Math.max(0, Math.min(val, totalSlices - 1))
+
+      if (syncScroll) {
+        // 동시 스크롤 모드: 둘 다 이동
+        setBaselineSlice(prev => clamp(prev + delta))
+        setFollowupSlice(prev => {
+          const newVal = clamp(prev + delta)
+          onSliceChange?.(newVal)
+          return newVal
+        })
+      } else {
+        // 개별 모드: followup만 이동
+        setFollowupSlice(prev => {
+          const newVal = clamp(prev + delta)
+          onSliceChange?.(newVal)
+          return newVal
+        })
       }
     }
-  }, [currentSlice]) // eslint-disable-line react-hooks/exhaustive-deps
-  // 의존성에서 followupSlice, totalSlices 제외하여 무한루프 방지
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [syncScroll, totalSlices, onSliceChange])
 
   // WebGL/NiiVue 지원 여부 확인 (한 번만 체크)
   const webglSupport = useMemo(() => checkNiiVueSupport(), [])
@@ -194,7 +223,7 @@ export function Viewer({
               key="niivue-baseline"
               caseId={caseId}
               series="baseline"
-              currentSlice={syncScroll ? currentSlice : baselineSlice}
+              currentSlice={baselineSlice}
               onSliceChange={handleBaselineSliceChange}
               wlPreset={wlPreset}
               customWL={customWL}
@@ -203,21 +232,36 @@ export function Viewer({
               isInteractive={false}
               wlDragEnabled={wlDragEnabled}
               onWLChange={onWLChange}
-              label={`Baseline${!syncScroll ? ` (${baselineSlice + 1})` : ''}`}
+              label="Baseline"
             />
           ) : (
             <SliceCanvas
               imageUrl={baselineUrl}
               lesions={[]}
-              currentSlice={syncScroll ? currentSlice : baselineSlice}
+              currentSlice={baselineSlice}
               onWheel={handleWheel}
               isInteractive={false}
               wlDragEnabled={wlDragEnabled}
               onWLChange={onWLChange}
               customWL={customWL}
-              label={`Baseline${!syncScroll ? ` (${baselineSlice + 1})` : ''}`}
+              label="Baseline"
             />
           )}
+          {/* Baseline 개별 슬라이더 */}
+          <div className="flex items-center gap-2 px-1">
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, totalSlices - 1)}
+              value={baselineSlice}
+              onChange={(e) => handleBaselineSliceChange(parseInt(e.target.value, 10))}
+              disabled={totalSlices === 0}
+              className="flex-1 h-1.5 accent-blue-500 disabled:opacity-50"
+            />
+            <span className="text-gray-300 font-mono text-xs w-16 text-right">
+              {totalSlices > 0 ? `${baselineSlice + 1}/${totalSlices}` : '-'}
+            </span>
+          </div>
         </div>
 
         {/* Followup (우) */}
@@ -227,7 +271,7 @@ export function Viewer({
               key="niivue-followup"
               caseId={caseId}
               series="followup"
-              currentSlice={syncScroll ? currentSlice : followupSlice}
+              currentSlice={followupSlice}
               onSliceChange={handleFollowupSliceChange}
               wlPreset={wlPreset}
               customWL={customWL}
@@ -237,7 +281,7 @@ export function Viewer({
               isInteractive={true}
               wlDragEnabled={wlDragEnabled}
               onWLChange={onWLChange}
-              label={`Follow-up${!syncScroll ? ` (${followupSlice + 1})` : ''}`}
+              label="Follow-up"
               overlayUrl={overlayUrl}
               showOverlay={showOverlay && isAided}
               aiThreshold={aiThreshold}
@@ -248,39 +292,36 @@ export function Viewer({
               overlayUrl={overlayUrl}
               showOverlay={showOverlay && isAided}
               lesions={lesions}
-              currentSlice={syncScroll ? currentSlice : followupSlice}
+              currentSlice={followupSlice}
               onAddLesion={handleServerAddLesion}
               onWheel={handleWheel}
               isInteractive={true}
               wlDragEnabled={wlDragEnabled}
               onWLChange={onWLChange}
               customWL={customWL}
-              label={`Follow-up${!syncScroll ? ` (${followupSlice + 1})` : ''}`}
+              label="Follow-up"
             />
           )}
+          {/* Followup 개별 슬라이더 */}
+          <div className="flex items-center gap-2 px-1">
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, totalSlices - 1)}
+              value={followupSlice}
+              onChange={(e) => handleFollowupSliceChange(parseInt(e.target.value, 10))}
+              disabled={totalSlices === 0}
+              className="flex-1 h-1.5 accent-green-500 disabled:opacity-50"
+            />
+            <span className="text-gray-300 font-mono text-xs w-16 text-right">
+              {totalSlices > 0 ? `${followupSlice + 1}/${totalSlices}` : '-'}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* 컨트롤 바 */}
-      <div className="bg-medical-dark rounded-lg p-4 space-y-3">
-        {/* 슬라이스 슬라이더 */}
-        <div className="flex items-center gap-4">
-          <span className="text-gray-400 text-sm w-20">Slice</span>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, totalSlices - 1)}
-            value={currentSlice}
-            onChange={handleSliderChange}
-            disabled={totalSlices === 0}
-            className="flex-1 accent-primary-500 disabled:opacity-50"
-          />
-          <span className="text-white font-mono text-sm w-24 text-right">
-            {totalSlices > 0 ? `${currentSlice + 1} / ${totalSlices}` : '로딩 중...'}
-          </span>
-        </div>
-
-        {/* 추가 컨트롤 */}
+      <div className="bg-medical-dark rounded-lg p-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           {/* W/L 프리셋 토글 */}
           <div className="flex items-center gap-2">
@@ -357,9 +398,9 @@ export function Viewer({
             </button>
           </div>
 
-          {/* 마우스 휠 안내 */}
+          {/* 단축키 안내 */}
           <span className="text-gray-500 text-xs">
-            마우스 휠로 슬라이스 이동
+            ↑↓ 슬라이스 이동 | L 동시 스크롤 토글
           </span>
         </div>
       </div>
