@@ -10,10 +10,10 @@
  *   - 병변 마킹
  *   - 결과 제출 및 다음 케이스 이동
  *
- * 케이스 할당:
- *   - /study-config/public API에서 세션/블록 수 조회
- *   - /case/allocate API에서 세션별 케이스 목록 동적 할당
- *   - dataset 폴더의 실제 NIfTI 파일 사용
+ * 디자인:
+ *   - 글래스모피즘 카드
+ *   - 그라데이션 배경
+ *   - 애니메이션 효과
  *
  * URL 파라미터:
  *   /viewer/:sessionId
@@ -33,6 +33,63 @@ import Viewer from '../components/Viewer'
 import LesionMarker from '../components/LesionMarker'
 import InputPanel from '../components/InputPanel'
 import ProgressBar from '../components/ProgressBar'
+
+// =============================================================================
+// 아이콘 컴포넌트
+// =============================================================================
+
+const ArrowLeftIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M19 12H5M12 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const CheckCircleIcon = ({ className = "w-8 h-8" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 11.08V12a10 10 0 11-5.93-9.14" strokeLinecap="round" />
+    <path d="M22 4L12 14.01l-3-3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const ErrorIcon = ({ className = "w-8 h-8" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M15 9l-6 6M9 9l6 6" strokeLinecap="round" />
+  </svg>
+)
+
+const AidedIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1 1-2" fill="currentColor" stroke="none" />
+  </svg>
+)
+
+const UnaidedIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+)
+
+const UserIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M6 21v-2a4 4 0 014-4h4a4 4 0 014 4v2" />
+  </svg>
+)
+
+const CaseIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M3 9h18M9 21V9" />
+  </svg>
+)
+
+// =============================================================================
+// 메인 컴포넌트
+// =============================================================================
 
 export default function ViewerPage() {
   const { sessionId } = useParams()
@@ -57,7 +114,6 @@ export default function ViewerPage() {
   const [submitError, setSubmitError] = useState(null)
 
   // ★ 메모리 최적화: 이전 caseId 유지 (Viewer 언마운트 방지)
-  // 케이스 전환 시 currentCase가 잠시 변경되어도 Viewer를 유지하기 위해 사용
   const prevCaseIdRef = useRef(null)
   if (currentCase?.case_id) {
     prevCaseIdRef.current = currentCase.case_id
@@ -82,17 +138,14 @@ export default function ViewerPage() {
         const allocation = await api.getCaseAllocation(numSessions, numBlocks)
 
         // 3. 내 세션 목록 조회하여 session_code 확보
-        //    URL의 sessionId는 DB 내부 ID이므로, session_code로 변환 필요
         const mySessions = await sessionsApi.getMySessions(token)
         const currentSession = mySessions.find(s => s.session_id === parseInt(sessionId))
 
-        // session_code 결정: 기존 세션이면 DB에서, 새 세션이면 할당에서 추론
+        // session_code 결정
         let sessionCode
         if (currentSession) {
-          // 재진입: DB에서 session_code 가져오기
           sessionCode = currentSession.session_code
         } else {
-          // 새 세션: 다음 세션 번호 계산 (기존 세션 수 + 1)
           const existingSessionCodes = mySessions.map(s => s.session_code)
           for (let i = 1; i <= numSessions; i++) {
             const candidateCode = `S${i}`
@@ -110,13 +163,13 @@ export default function ViewerPage() {
         const sessionCases = allocation.sessions[sessionCode]
 
         if (!sessionCases) {
-          throw new Error(`세션 ${sessionCode}의 케이스 할당을 찾을 수 없습니다. 유효한 세션: S1-S${numSessions}`)
+          throw new Error(`세션 ${sessionCode}의 케이스 할당을 찾을 수 없습니다.`)
         }
 
         const blockACases = sessionCases.block_a
         const blockBCases = sessionCases.block_b
 
-        // 5. 세션 진입 (동적 케이스 목록 사용)
+        // 5. 세션 진입
         const enterResult = await sessionsApi.enterSession(
           token,
           parseInt(sessionId),
@@ -125,7 +178,7 @@ export default function ViewerPage() {
         )
         setSessionInfo(enterResult)
 
-        // 5. 현재 케이스 정보
+        // 6. 현재 케이스 정보
         const caseInfo = await sessionsApi.getCurrentCase(token, parseInt(sessionId))
         setCurrentCase(caseInfo)
 
@@ -150,7 +203,6 @@ export default function ViewerPage() {
       enterSession()
     }
 
-    // cleanup: 페이지 언마운트 시 타이머 정지
     return () => {
       timer.stop()
     }
@@ -184,7 +236,6 @@ export default function ViewerPage() {
     const timeSpent = timer.stop()
 
     try {
-      // 레거시 API로 결과 제출 (기존 study/submit 사용)
       const data = {
         reader_id: user.reader_code,
         session_id: sessionInfo.session_code,
@@ -216,7 +267,7 @@ export default function ViewerPage() {
 
     } catch (err) {
       setSubmitError(err.message)
-      timer.start() // 에러 시 타이머 재시작
+      timer.start()
     } finally {
       setIsSubmitting(false)
     }
@@ -225,10 +276,14 @@ export default function ViewerPage() {
   // 로딩 상태
   if (loading) {
     return (
-      <div className="min-h-screen bg-medical-darker flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-white">세션 로딩 중...</p>
+      <div className="min-h-screen bg-[#0a0a12] bg-mesh flex items-center justify-center">
+        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+        <div className="relative z-10 text-center">
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-500/20"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin"></div>
+          </div>
+          <p className="text-gray-400 text-lg">세션 로딩 중...</p>
         </div>
       </div>
     )
@@ -237,19 +292,19 @@ export default function ViewerPage() {
   // 에러 상태
   if (error) {
     return (
-      <div className="min-h-screen bg-medical-darker flex items-center justify-center">
-        <div className="bg-medical-dark p-8 rounded-lg max-w-md text-center">
-          <div className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+      <div className="min-h-screen bg-[#0a0a12] bg-mesh flex items-center justify-center">
+        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+        <div className="relative z-10 glass-card rounded-2xl p-10 max-w-md text-center animate-fade-in-up">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-red-500/20 flex items-center justify-center">
+            <ErrorIcon className="w-10 h-10 text-red-400" />
           </div>
-          <h1 className="text-xl font-bold text-white mb-2">오류 발생</h1>
-          <p className="text-red-400 mb-4">{error}</p>
+          <h1 className="text-2xl font-bold text-white mb-3">오류 발생</h1>
+          <p className="text-red-400 mb-6">{error}</p>
           <Link
             to="/dashboard"
-            className="inline-block px-6 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 btn-primary rounded-xl font-semibold text-white"
           >
+            <ArrowLeftIcon className="w-5 h-5" />
             대시보드로 돌아가기
           </Link>
         </div>
@@ -260,24 +315,24 @@ export default function ViewerPage() {
   // 세션 완료
   if (currentCase?.is_session_complete) {
     return (
-      <div className="min-h-screen bg-medical-darker flex items-center justify-center">
-        <div className="bg-medical-dark p-8 rounded-lg max-w-md text-center">
-          <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+      <div className="min-h-screen bg-[#0a0a12] bg-mesh flex items-center justify-center">
+        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+        <div className="relative z-10 glass-card rounded-2xl p-10 max-w-md text-center animate-fade-in-up">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-emerald-500/20 flex items-center justify-center animate-pulse-glow">
+            <CheckCircleIcon className="w-10 h-10 text-emerald-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">세션 완료!</h1>
-          <p className="text-gray-400 mb-4">
-            모든 케이스를 완료했습니다.
+          <h1 className="text-3xl font-bold text-white mb-3">세션 완료!</h1>
+          <p className="text-gray-400 mb-2">
+            모든 케이스를 성공적으로 완료했습니다.
           </p>
-          <p className="text-gray-500 text-sm mb-6">
+          <p className="text-gray-600 text-sm mb-8">
             Session: {sessionInfo?.session_code}
           </p>
           <Link
             to="/dashboard"
-            className="inline-block px-6 py-3 bg-primary-500 text-white font-semibold rounded-lg hover:bg-primary-600 transition-colors"
+            className="inline-flex items-center gap-2 px-8 py-3.5 btn-primary rounded-xl font-semibold text-white text-lg"
           >
+            <ArrowLeftIcon className="w-5 h-5" />
             대시보드로 돌아가기
           </Link>
         </div>
@@ -285,12 +340,16 @@ export default function ViewerPage() {
     )
   }
 
-  // 현재 케이스가 없는 경우 (최초 로드 시에만)
-  // ★ 메모리 최적화: stableCaseId가 있으면 Viewer를 유지 (언마운트 방지)
+  // 현재 케이스가 없는 경우
   if (!stableCaseId) {
     return (
-      <div className="min-h-screen bg-medical-darker flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen bg-[#0a0a12] bg-mesh flex items-center justify-center">
+        <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
+        <div className="relative z-10 text-center">
+          <div className="relative w-16 h-16 mx-auto mb-4">
+            <div className="absolute inset-0 rounded-full border-4 border-blue-500/20"></div>
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin"></div>
+          </div>
           <p className="text-gray-400">케이스 정보를 불러오는 중...</p>
         </div>
       </div>
@@ -300,128 +359,165 @@ export default function ViewerPage() {
   const isAided = currentCase?.mode === 'AIDED'
 
   return (
-    <div className="min-h-screen bg-medical-darker p-4">
-      <div className="max-w-7xl mx-auto space-y-4">
-        {/* 헤더 */}
-        <div className="flex items-center justify-between">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center text-gray-400 hover:text-white transition-colors"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            대시보드
-          </Link>
-          <div className="text-right">
-            <span className="text-gray-400">{user?.name}</span>
-            <span className="text-gray-600 mx-2">|</span>
-            <span className={`font-semibold ${isAided ? 'text-yellow-400' : 'text-blue-400'}`}>
-              {currentCase?.mode || '로딩...'}
-            </span>
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#0a0a12] bg-mesh">
+      <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
 
-        {/* 진행 상황 */}
-        <ProgressBar
-          current={(currentCase?.case_index ?? 0) + 1}
-          total={currentCase?.total_cases_in_block ?? 0}
-          completedCount={currentCase?.case_index ?? 0}
-          mode={currentCase?.mode || 'UNAIDED'}
-          sessionInfo={`${sessionInfo?.session_code} - Block ${currentCase?.block || '?'}`}
-        />
+      <div className="relative z-10 p-4 lg:p-6">
+        <div className="max-w-[1600px] mx-auto space-y-4">
+          {/* 헤더 */}
+          <header className="flex items-center justify-between animate-fade-in-up">
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/5 transition-all duration-300"
+            >
+              <ArrowLeftIcon className="w-5 h-5" />
+              <span className="font-medium">대시보드</span>
+            </Link>
 
-        {/* 케이스 ID 표시 - 개인정보 보호를 위해 단순 번호만 표시 */}
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-white">
-            Case {String((currentCase?.case_index ?? 0) + 1).padStart(3, '0')}
-          </h2>
-          <p className="text-sm text-gray-500">
-            Block {currentCase?.block || '?'} • 케이스 {(currentCase?.case_index ?? 0) + 1} / {currentCase?.total_cases_in_block ?? 0}
-            {currentCase?.is_last_in_block && ' (마지막)'}
-          </p>
-        </div>
+            <div className="flex items-center gap-4">
+              {/* 모드 배지 */}
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${
+                isAided ? 'mode-aided' : 'mode-unaided'
+              }`}>
+                {isAided ? (
+                  <AidedIcon className="w-5 h-5" />
+                ) : (
+                  <UnaidedIcon className="w-5 h-5" />
+                )}
+                <span className="font-bold text-sm">{currentCase?.mode || '로딩...'}</span>
+              </div>
 
-        {/* 메인 레이아웃 - 뷰어 전체 너비 */}
-        <div className="space-y-4">
-          {/* 뷰어 영역 (전체 너비) */}
-          {/* ★ 메모리 최적화: Viewer를 항상 렌더링하여 NiiVue 인스턴스 유지 */}
-          {/* 로딩/에러 시에도 Viewer를 언마운트하지 않고 오버레이만 표시 */}
-          <div className="w-full relative">
-            {/* 로딩 오버레이 (Viewer 위에 표시) */}
-            {caseData.loading && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-medical-dark/80 rounded-lg">
-                <div className="text-center">
-                  <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-2"></div>
-                  <p className="text-gray-400">케이스 로딩 중...</p>
+              {/* 사용자 정보 */}
+              <div className="flex items-center gap-3 px-4 py-2 rounded-xl bg-white/5 border border-white/5">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+                  <UserIcon className="w-4 h-4 text-white" />
                 </div>
+                <span className="text-white font-medium text-sm">{user?.name}</span>
               </div>
-            )}
+            </div>
+          </header>
 
-            {/* 에러 오버레이 */}
-            {caseData.error && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-medical-dark/90 rounded-lg">
-                <p className="text-red-400">{caseData.error}</p>
-              </div>
-            )}
-
-            {/* Viewer는 항상 렌더링 (NiiVue 인스턴스 재사용) */}
-            {/* ★ 메모리 최적화: stableCaseId 사용으로 케이스 전환 시 언마운트 방지 */}
-            {/* ★ key="main-viewer"로 React reconciliation 안정화 */}
-            <Viewer
-              key="main-viewer"
-              caseId={stableCaseId}
-              readerId={user?.reader_code}
-              sessionId={sessionInfo?.session_code}
-              isAided={isAided}
-              aiThreshold={sessionInfo?.ai_threshold || 0.30}
-              lesions={caseData.lesions}
-              onAddLesion={caseData.addLesion}
-              currentSlice={caseData.currentSlice}
-              totalSlices={caseData.totalSlices}
-              onSliceChange={caseData.setSlice}
-              wlPreset={caseData.wlPreset}
-              onToggleWL={caseData.toggleWL}
-              aiAvailable={caseData.aiAvailable}
-              customWL={caseData.customWL}
-              onWLChange={caseData.setCustomWL}
-              wlMode={caseData.wlMode}
+          {/* 진행 상황 */}
+          <div className="animate-fade-in-up" style={{ animationDelay: '100ms', opacity: 0 }}>
+            <ProgressBar
+              current={(currentCase?.case_index ?? 0) + 1}
+              total={currentCase?.total_cases_in_block ?? 0}
+              completedCount={currentCase?.case_index ?? 0}
+              mode={currentCase?.mode || 'UNAIDED'}
+              sessionInfo={`${sessionInfo?.session_code} - Block ${currentCase?.block || '?'}`}
             />
           </div>
 
-          {/* 하단 컨트롤 영역 (가운데 정렬) */}
-          <div className="flex flex-col lg:flex-row justify-center items-start gap-4">
-            {/* 병변 마커 */}
-            <div className="w-full lg:w-auto lg:min-w-[320px]">
-              <LesionMarker
-                lesions={caseData.lesions}
-                onUpdateConfidence={caseData.updateLesionConfidence}
-                onRemove={caseData.removeLesion}
-                maxLesions={sessionInfo?.k_max || 3}
-              />
-            </div>
-
-            {/* 입력 패널 */}
-            <div className="w-full lg:w-auto lg:min-w-[280px]">
-              <InputPanel
-                patientDecision={patientDecision}
-                onDecisionChange={setPatientDecision}
-                lesionCount={caseData.lesions.length}
-                onSubmit={handleSubmit}
-                onClearLesions={caseData.clearLesions}
-                isSubmitting={isSubmitting}
-                timeElapsed={timer.formattedTime}
-              />
-            </div>
-
-            {/* 에러 메시지 */}
-            {submitError && (
-              <div className="w-full lg:w-auto lg:max-w-[300px]">
-                <div className="bg-red-900/30 border border-red-600 rounded-lg p-3">
-                  <p className="text-red-400 text-sm">{submitError}</p>
-                </div>
+          {/* 케이스 정보 */}
+          <div className="text-center animate-fade-in-up" style={{ animationDelay: '150ms', opacity: 0 }}>
+            <div className="inline-flex items-center gap-3 px-6 py-3 glass-card rounded-2xl">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                <CaseIcon className="w-5 h-5 text-blue-400" />
               </div>
-            )}
+              <div className="text-left">
+                <h2 className="text-xl font-bold text-white">
+                  Case {String((currentCase?.case_index ?? 0) + 1).padStart(3, '0')}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  Block {currentCase?.block} • {(currentCase?.case_index ?? 0) + 1} / {currentCase?.total_cases_in_block ?? 0}
+                  {currentCase?.is_last_in_block && (
+                    <span className="ml-2 text-amber-400">(마지막)</span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 메인 레이아웃 */}
+          <div className="space-y-4 animate-fade-in-up" style={{ animationDelay: '200ms', opacity: 0 }}>
+            {/* 뷰어 영역 */}
+            <div className="w-full relative">
+              {/* 로딩 오버레이 */}
+              {caseData.loading && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center glass-card rounded-2xl">
+                  <div className="text-center">
+                    <div className="relative w-12 h-12 mx-auto mb-3">
+                      <div className="absolute inset-0 rounded-full border-4 border-blue-500/20"></div>
+                      <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin"></div>
+                    </div>
+                    <p className="text-gray-400">케이스 로딩 중...</p>
+                  </div>
+                </div>
+              )}
+
+              {/* 에러 오버레이 */}
+              {caseData.error && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center glass-card rounded-2xl">
+                  <div className="text-center">
+                    <div className="w-12 h-12 mx-auto mb-3 rounded-xl bg-red-500/20 flex items-center justify-center">
+                      <ErrorIcon className="w-6 h-6 text-red-400" />
+                    </div>
+                    <p className="text-red-400">{caseData.error}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Viewer */}
+              <Viewer
+                key="main-viewer"
+                caseId={stableCaseId}
+                readerId={user?.reader_code}
+                sessionId={sessionInfo?.session_code}
+                isAided={isAided}
+                aiThreshold={sessionInfo?.ai_threshold || 0.30}
+                lesions={caseData.lesions}
+                onAddLesion={caseData.addLesion}
+                currentSlice={caseData.currentSlice}
+                totalSlices={caseData.totalSlices}
+                onSliceChange={caseData.setSlice}
+                wlPreset={caseData.wlPreset}
+                onToggleWL={caseData.toggleWL}
+                aiAvailable={caseData.aiAvailable}
+                customWL={caseData.customWL}
+                onWLChange={caseData.setCustomWL}
+                wlMode={caseData.wlMode}
+              />
+            </div>
+
+            {/* 하단 컨트롤 영역 */}
+            <div className="flex flex-col lg:flex-row justify-center items-stretch gap-4">
+              {/* 병변 마커 */}
+              <div className="w-full lg:w-auto lg:min-w-[360px]">
+                <LesionMarker
+                  lesions={caseData.lesions}
+                  onUpdateConfidence={caseData.updateLesionConfidence}
+                  onRemove={caseData.removeLesion}
+                  maxLesions={sessionInfo?.k_max || 3}
+                />
+              </div>
+
+              {/* 입력 패널 */}
+              <div className="w-full lg:w-auto lg:min-w-[320px]">
+                <InputPanel
+                  patientDecision={patientDecision}
+                  onDecisionChange={setPatientDecision}
+                  lesionCount={caseData.lesions.length}
+                  onSubmit={handleSubmit}
+                  onClearLesions={caseData.clearLesions}
+                  isSubmitting={isSubmitting}
+                  timeElapsed={timer.formattedTime}
+                />
+              </div>
+
+              {/* 에러 메시지 */}
+              {submitError && (
+                <div className="w-full lg:w-auto lg:max-w-[300px]">
+                  <div className="glass-card rounded-xl p-4 border-red-500/30">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                        <ErrorIcon className="w-4 h-4 text-red-400" />
+                      </div>
+                      <p className="text-red-400 text-sm">{submitError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
