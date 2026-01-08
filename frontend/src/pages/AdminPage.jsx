@@ -5,10 +5,17 @@
  * 역할: 관리자 대시보드 (리더 관리, 세션 배정, 감사 로그)
  *
  * 탭:
+ *   - 연구 설정: 세션/블록 구조, 입력 설정
+ *   - 진행 현황: 그룹/리더별 진행률
  *   - 리더 관리: 리더 목록, 생성, 수정, 비활성화
- *   - 세션 관리: 세션 배정, 초기화
  *   - 감사 로그: 시스템 활동 로그 조회
  *   - 데이터 내보내기: CSV/JSON 다운로드
+ *
+ * 디자인:
+ *   - 글래스모피즘 카드
+ *   - 탭 네비게이션 아이콘
+ *   - 통계 카드 그라데이션
+ *   - 모달 글래스 효과
  *
  * 라우트: /admin (관리자 전용)
  * ============================================================================
@@ -19,15 +26,137 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { adminApi, authApi, studyConfigApi, dashboardApi } from '../services/api'
 
+// ============================================================================
+// 아이콘 컴포넌트
+// ============================================================================
+
+const SettingsIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+)
+
+const ChartIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M3 3v18h18" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M7 16l4-4 4 4 5-6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const UsersIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="9" cy="7" r="3" />
+    <path d="M3 18c0-3 3-5 6-5s6 2 6 5" />
+    <circle cx="17" cy="8" r="2" />
+    <path d="M21 18c0-2-2-3.5-4-3.5" />
+  </svg>
+)
+
+const LogIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" strokeLinecap="round" />
+  </svg>
+)
+
+const DownloadIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <path d="M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const LockIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="3" y="11" width="18" height="11" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+)
+
+const UnlockIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="3" y="11" width="18" height="11" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+  </svg>
+)
+
+const KeyIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const CloseIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const LogoutIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+    <path d="M16 17l5-5-5-5M21 12H9" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const DashboardIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <rect x="3" y="3" width="7" height="9" rx="1" />
+    <rect x="14" y="3" width="7" height="5" rx="1" />
+    <rect x="14" y="12" width="7" height="9" rx="1" />
+    <rect x="3" y="16" width="7" height="5" rx="1" />
+  </svg>
+)
+
+const SessionIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+    <rect x="9" y="3" width="6" height="4" rx="1" />
+    <path d="M9 14l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const PlusIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+  </svg>
+)
+
+const CheckIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const AlertIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const AdminBadgeIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+  </svg>
+)
+
+const ReaderIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+  </svg>
+)
+
+// ============================================================================
+// 유틸리티 함수
+// ============================================================================
+
 /**
  * UTC ISO 문자열을 한국 시간(KST)으로 변환
- * 서버에서 UTC로 저장되지만 "Z" 접미사 없이 전달되는 경우를 처리
- * @param {string} isoString - ISO 8601 형식의 UTC 시간
- * @returns {string} - 한국 시간 형식 (YYYY. MM. DD. HH:MM:SS)
  */
 function formatKST(isoString) {
   if (!isoString) return '-'
-  // 서버가 UTC로 저장하지만 "Z" 없이 보내므로 명시적으로 추가
   const utcString = isoString.endsWith('Z') ? isoString : isoString + 'Z'
   const date = new Date(utcString)
   return date.toLocaleString('ko-KR', {
@@ -41,6 +170,10 @@ function formatKST(isoString) {
     hour12: false
   })
 }
+
+// ============================================================================
+// 메인 컴포넌트
+// ============================================================================
 
 export default function AdminPage() {
   const navigate = useNavigate()
@@ -57,7 +190,7 @@ export default function AdminPage() {
   const [studyConfig, setStudyConfig] = useState(null)
   const [isEditingConfig, setIsEditingConfig] = useState(false)
   const [configForm, setConfigForm] = useState({})
-  const [editingGroupName, setEditingGroupName] = useState(null)  // 현재 편집 중인 그룹 키
+  const [editingGroupName, setEditingGroupName] = useState(null)
 
   // 대시보드 상태
   const [dashboardSummary, setDashboardSummary] = useState(null)
@@ -110,10 +243,10 @@ export default function AdminPage() {
       loadStudyConfig()
     } else if (activeTab === 'dashboard') {
       loadDashboardData()
-      loadStudyConfig()  // 그룹명 표시를 위해 studyConfig도 로드
+      loadStudyConfig()
     } else if (activeTab === 'readers') {
       loadReaders()
-      loadStudyConfig()  // 그룹명 표시를 위해 studyConfig도 로드
+      loadStudyConfig()
     } else if (activeTab === 'logs') {
       loadAuditLogs()
     }
@@ -132,7 +265,6 @@ export default function AdminPage() {
         ai_threshold: data.ai_threshold || 0.30,
         k_max: data.k_max || 3,
         require_lesion_marking: data.require_lesion_marking ?? true,
-        // 구조 설정 (잠금 전에만 수정 가능)
         total_sessions: data.total_sessions || 2,
         total_blocks: data.total_blocks || 2,
         total_groups: data.total_groups || 2,
@@ -199,7 +331,7 @@ export default function AdminPage() {
     }
   }
 
-  // 그룹명 저장 (즉시 저장)
+  // 그룹명 저장
   const handleSaveGroupName = async (group, newName) => {
     if (!newName || newName.trim() === '') return
     try {
@@ -258,7 +390,6 @@ export default function AdminPage() {
     }
   }
 
-  // 비밀번호 변경 처리 (자기 자신)
   const handleChangePassword = async (e) => {
     e.preventDefault()
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -283,7 +414,6 @@ export default function AdminPage() {
     }
   }
 
-  // 비밀번호 재설정 처리 (다른 사용자)
   const handleResetPassword = async (e) => {
     e.preventDefault()
     if (resetPasswordForm.newPassword !== resetPasswordForm.confirmPassword) {
@@ -309,14 +439,12 @@ export default function AdminPage() {
     }
   }
 
-  // 비밀번호 재설정 모달 열기
   const openResetPasswordModal = (reader) => {
     setResetPasswordTarget(reader)
     setShowResetPasswordModal(true)
     setError(null)
   }
 
-  // 세션 관리 모달 열기
   const openSessionModal = async (reader) => {
     setSessionTarget(reader)
     setShowSessionModal(true)
@@ -329,7 +457,6 @@ export default function AdminPage() {
     }
   }
 
-  // 세션 삭제 (할당 취소)
   const handleDeleteSession = async (sessionId) => {
     const confirmed = confirm(
       '⚠️ 세션 할당을 취소하시겠습니까?\n\n' +
@@ -344,7 +471,6 @@ export default function AdminPage() {
       setError(null)
       await adminApi.deleteSession(getToken(), sessionId)
       setSuccessMessage('세션 할당이 취소되었습니다')
-      // 세션 목록 새로고침
       const details = await adminApi.getReader(getToken(), sessionTarget.id)
       setSessionTargetDetails(details)
       loadReaders()
@@ -355,7 +481,6 @@ export default function AdminPage() {
     }
   }
 
-  // 세션 초기화 (리셋) - 제출된 결과도 삭제
   const handleResetSession = async (sessionId) => {
     const confirmed = confirm(
       '⚠️ 세션을 초기화하시겠습니까?\n\n' +
@@ -372,7 +497,6 @@ export default function AdminPage() {
       setError(null)
       await adminApi.resetSession(getToken(), sessionId)
       setSuccessMessage('세션이 초기화되었습니다 (제출된 결과 포함)')
-      // 세션 목록 새로고침
       const details = await adminApi.getReader(getToken(), sessionTarget.id)
       setSessionTargetDetails(details)
       loadReaders()
@@ -412,7 +536,6 @@ export default function AdminPage() {
     }
   }
 
-  // 리더 재활성화
   const handleReactivateReader = async (readerId) => {
     if (!confirm('이 리더를 재활성화하시겠습니까?')) return
     try {
@@ -442,54 +565,56 @@ export default function AdminPage() {
   }, [successMessage])
 
   const tabs = [
-    { id: 'study-config', label: '연구 설정' },
-    { id: 'dashboard', label: '진행 현황' },
-    { id: 'readers', label: '리더 관리' },
-    { id: 'logs', label: '감사 로그' },
-    { id: 'export', label: '데이터 내보내기' }
+    { id: 'study-config', label: '연구 설정', icon: SettingsIcon },
+    { id: 'dashboard', label: '진행 현황', icon: ChartIcon },
+    { id: 'readers', label: '리더 관리', icon: UsersIcon },
+    { id: 'logs', label: '감사 로그', icon: LogIcon },
+    { id: 'export', label: '데이터 내보내기', icon: DownloadIcon }
   ]
 
   return (
-    <div className="min-h-screen bg-medical-darker">
+    <div className="min-h-screen bg-mesh">
       {/* 헤더 */}
-      <header className="bg-medical-dark border-b border-gray-800">
+      <header className="glass-card border-b border-white/10 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-500 to-orange-600 flex items-center justify-center">
-                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center shadow-lg shadow-amber-500/25">
+                <SettingsIcon className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-white">관리자 대시보드</h1>
-                <p className="text-sm text-gray-400">Reader Study MVP</p>
+                <h1 className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-300">
+                  관리자 대시보드
+                </h1>
+                <p className="text-sm text-gray-500">Reader Study MVP</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <Link to="/dashboard" className="text-gray-400 hover:text-white transition-colors">
-                대시보드
+            <div className="flex items-center gap-3">
+              <Link
+                to="/dashboard"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all"
+              >
+                <DashboardIcon className="w-4 h-4" />
+                <span className="text-sm">대시보드</span>
               </Link>
-              <span className="text-gray-600">|</span>
-              <span className="text-white">{user?.name}</span>
+              <div className="w-px h-6 bg-white/10" />
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <AdminBadgeIcon className="w-4 h-4 text-amber-400" />
+                <span className="text-amber-400 text-sm font-medium">{user?.name}</span>
+              </div>
               <button
                 onClick={() => setShowPasswordModal(true)}
-                className="px-3 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex items-center gap-1"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all"
                 title="비밀번호 변경"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-                비밀번호 변경
+                <KeyIcon className="w-4 h-4" />
               </button>
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
               >
-                로그아웃
+                <LogoutIcon className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -497,22 +622,26 @@ export default function AdminPage() {
       </header>
 
       {/* 탭 네비게이션 */}
-      <div className="bg-medical-dark border-b border-gray-800">
+      <div className="glass-card border-b border-white/10">
         <div className="max-w-7xl mx-auto px-4">
-          <nav className="flex gap-1">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-6 py-3 font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'text-primary-400 border-b-2 border-primary-400'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+          <nav className="flex gap-1 overflow-x-auto">
+            {tabs.map(tab => {
+              const Icon = tab.icon
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-5 py-4 font-medium transition-all whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'text-blue-400 border-b-2 border-blue-400 bg-blue-500/5'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                </button>
+              )
+            })}
           </nav>
         </div>
       </div>
@@ -521,32 +650,46 @@ export default function AdminPage() {
       <main className="max-w-7xl mx-auto px-4 py-8">
         {/* 알림 메시지 */}
         {successMessage && (
-          <div className="mb-6 p-4 bg-green-900/30 border border-green-600 rounded-lg">
-            <p className="text-green-400">{successMessage}</p>
+          <div className="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-3 animate-fade-in-up">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+              <CheckIcon className="w-5 h-5 text-emerald-400" />
+            </div>
+            <p className="text-emerald-400">{successMessage}</p>
           </div>
         )}
         {error && (
-          <div className="mb-6 p-4 bg-red-900/30 border border-red-600 rounded-lg">
+          <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-3 animate-fade-in-up">
+            <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">
+              <AlertIcon className="w-5 h-5 text-red-400" />
+            </div>
             <p className="text-red-400">{error}</p>
           </div>
         )}
 
         {/* 연구 설정 탭 */}
         {activeTab === 'study-config' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in-up">
             {/* Lock 상태 배너 */}
             {studyConfig?.is_locked && (
-              <div className="p-4 bg-yellow-900/30 border border-yellow-600 rounded-lg">
-                <p className="text-yellow-400 font-medium">
-                  🔒 연구 설정이 잠겼습니다. 핵심 설정은 변경할 수 없습니다.
-                  {studyConfig.locked_at && ` (${formatKST(studyConfig.locked_at)})`}
-                </p>
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                  <LockIcon className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-amber-400 font-medium">연구 설정이 잠겼습니다</p>
+                  <p className="text-amber-400/70 text-sm">핵심 설정은 변경할 수 없습니다. {studyConfig.locked_at && `(${formatKST(studyConfig.locked_at)})`}</p>
+                </div>
               </div>
             )}
 
             {/* 헤더 */}
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white">연구 설정</h2>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                  <SettingsIcon className="w-5 h-5 text-blue-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">연구 설정</h2>
+              </div>
               <div className="flex gap-2">
                 {!studyConfig?.is_locked && (
                   <>
@@ -554,14 +697,14 @@ export default function AdminPage() {
                       <>
                         <button
                           onClick={() => setIsEditingConfig(false)}
-                          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                          className="px-4 py-2 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all"
                         >
                           취소
                         </button>
                         <button
                           onClick={handleSaveConfig}
                           disabled={loading}
-                          className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                          className="px-4 py-2 rounded-lg btn-primary text-white disabled:opacity-50"
                         >
                           저장
                         </button>
@@ -569,7 +712,7 @@ export default function AdminPage() {
                     ) : (
                       <button
                         onClick={() => setIsEditingConfig(true)}
-                        className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+                        className="px-4 py-2 rounded-lg btn-primary text-white"
                       >
                         수정
                       </button>
@@ -577,9 +720,10 @@ export default function AdminPage() {
                     <button
                       onClick={handleLockConfig}
                       disabled={loading}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all disabled:opacity-50"
                     >
-                      🔒 잠금
+                      <LockIcon className="w-4 h-4" />
+                      잠금
                     </button>
                   </>
                 )}
@@ -589,10 +733,13 @@ export default function AdminPage() {
             {studyConfig && (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 구조 설정 */}
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">세션/블록 구조</h3>
+                <div className="glass-card rounded-xl p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <SessionIcon className="w-5 h-5 text-blue-400" />
+                    세션/블록 구조
+                  </h3>
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                    <div className="flex justify-between items-center py-2 border-b border-white/5">
                       <span className="text-gray-400">총 세션 수</span>
                       {isEditingConfig && !studyConfig.is_locked ? (
                         <input
@@ -601,13 +748,13 @@ export default function AdminPage() {
                           max="20"
                           value={configForm.total_sessions}
                           onChange={e => setConfigForm({...configForm, total_sessions: parseInt(e.target.value) || 1})}
-                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                          className="w-20 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <span className="text-white font-medium">{studyConfig.total_sessions}</span>
                       )}
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                    <div className="flex justify-between items-center py-2 border-b border-white/5">
                       <span className="text-gray-400">세션당 블록 수</span>
                       {isEditingConfig && !studyConfig.is_locked ? (
                         <input
@@ -616,13 +763,13 @@ export default function AdminPage() {
                           max="4"
                           value={configForm.total_blocks}
                           onChange={e => setConfigForm({...configForm, total_blocks: parseInt(e.target.value) || 1})}
-                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                          className="w-20 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <span className="text-white font-medium">{studyConfig.total_blocks}</span>
                       )}
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                    <div className="flex justify-between items-center py-2 border-b border-white/5">
                       <span className="text-gray-400">리더 그룹 수</span>
                       {isEditingConfig && !studyConfig.is_locked ? (
                         <input
@@ -631,7 +778,7 @@ export default function AdminPage() {
                           max="10"
                           value={configForm.total_groups}
                           onChange={e => setConfigForm({...configForm, total_groups: parseInt(e.target.value) || 1})}
-                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                          className="w-20 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <span className="text-white font-medium">{studyConfig.total_groups}</span>
@@ -639,7 +786,7 @@ export default function AdminPage() {
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-gray-400">케이스 순서</span>
-                      <span className="text-white font-medium">
+                      <span className="px-3 py-1 rounded-lg bg-white/5 text-white text-sm">
                         {studyConfig.case_order_mode === 'random' ? '랜덤' : '고정'}
                       </span>
                     </div>
@@ -647,10 +794,13 @@ export default function AdminPage() {
                 </div>
 
                 {/* 입력 설정 */}
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
-                  <h3 className="text-lg font-semibold text-white mb-4">판독 입력 설정</h3>
+                <div className="glass-card rounded-xl p-6">
+                  <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                    <SettingsIcon className="w-5 h-5 text-purple-400" />
+                    판독 입력 설정
+                  </h3>
                   <div className="space-y-4">
-                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                    <div className="flex justify-between items-center py-2 border-b border-white/5">
                       <span className="text-gray-400">최대 병변 마커 수 (k_max)</span>
                       {isEditingConfig && !studyConfig.is_locked ? (
                         <input
@@ -659,13 +809,13 @@ export default function AdminPage() {
                           max="10"
                           value={configForm.k_max}
                           onChange={e => setConfigForm({...configForm, k_max: parseInt(e.target.value)})}
-                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                          className="w-20 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <span className="text-white font-medium">{studyConfig.k_max}</span>
                       )}
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                    <div className="flex justify-between items-center py-2 border-b border-white/5">
                       <span className="text-gray-400">AI 확률 임계값</span>
                       {isEditingConfig ? (
                         <input
@@ -675,59 +825,61 @@ export default function AdminPage() {
                           step="0.05"
                           value={configForm.ai_threshold}
                           onChange={e => setConfigForm({...configForm, ai_threshold: parseFloat(e.target.value)})}
-                          className="w-20 px-2 py-1 bg-medical-darker border border-gray-700 rounded text-white text-right"
+                          className="w-20 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-right focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <span className="text-white font-medium">{studyConfig.ai_threshold}</span>
                       )}
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b border-gray-700">
+                    <div className="flex justify-between items-center py-2 border-b border-white/5">
                       <span className="text-gray-400">Lesion marking 필수</span>
                       {isEditingConfig && !studyConfig.is_locked ? (
                         <input
                           type="checkbox"
                           checked={configForm.require_lesion_marking}
                           onChange={e => setConfigForm({...configForm, require_lesion_marking: e.target.checked})}
-                          className="w-5 h-5"
+                          className="w-5 h-5 rounded border-gray-600 text-blue-500 focus:ring-blue-500/50"
                         />
                       ) : (
-                        <span className="text-white font-medium">
+                        <span className={`px-3 py-1 rounded-lg text-sm ${studyConfig.require_lesion_marking ? 'bg-emerald-500/20 text-emerald-400' : 'bg-gray-500/20 text-gray-400'}`}>
                           {studyConfig.require_lesion_marking ? '예' : '아니오'}
                         </span>
                       )}
                     </div>
                     <div className="flex justify-between items-center py-2">
                       <span className="text-gray-400">Confidence 입력 방식</span>
-                      <span className="text-white font-medium">{studyConfig.confidence_mode}</span>
+                      <span className="px-3 py-1 rounded-lg bg-white/5 text-white text-sm">
+                        {studyConfig.confidence_mode}
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 {/* 메타 정보 */}
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 lg:col-span-2">
+                <div className="glass-card rounded-xl p-6 lg:col-span-2">
                   <h3 className="text-lg font-semibold text-white mb-4">메타 정보</h3>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-gray-400 mb-2">연구 이름</label>
+                      <label className="block text-gray-400 text-sm mb-2">연구 이름</label>
                       {isEditingConfig ? (
                         <input
                           type="text"
                           value={configForm.study_name}
                           onChange={e => setConfigForm({...configForm, study_name: e.target.value})}
-                          className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                          className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <p className="text-white">{studyConfig.study_name}</p>
                       )}
                     </div>
                     <div>
-                      <label className="block text-gray-400 mb-2">설명</label>
+                      <label className="block text-gray-400 text-sm mb-2">설명</label>
                       {isEditingConfig ? (
                         <textarea
                           value={configForm.study_description || ''}
                           onChange={e => setConfigForm({...configForm, study_description: e.target.value})}
                           rows={3}
-                          className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                          className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                         />
                       ) : (
                         <p className="text-white">{studyConfig.study_description || '-'}</p>
@@ -736,18 +888,17 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Crossover 매핑 - 세션/블록 수에 맞춰 동적 생성 */}
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 lg:col-span-2">
+                {/* Crossover 매핑 */}
+                <div className="glass-card rounded-xl p-6 lg:col-span-2">
                   <h3 className="text-lg font-semibold text-white mb-4">Crossover 매핑</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
-                        <tr className="text-gray-400 border-b border-gray-700">
-                          <th className="py-2 text-left">그룹</th>
-                          {/* 세션/블록 헤더 동적 생성 */}
+                        <tr className="text-gray-400 border-b border-white/10">
+                          <th className="py-3 text-left font-medium">그룹</th>
                           {Array.from({ length: studyConfig.total_sessions || 2 }, (_, si) => si + 1).map(sessionNum =>
                             Array.from({ length: studyConfig.total_blocks || 2 }, (_, bi) => String.fromCharCode(65 + bi)).map(blockLetter => (
-                              <th key={`S${sessionNum}_${blockLetter}`} className="py-2 text-center">
+                              <th key={`S${sessionNum}_${blockLetter}`} className="py-3 text-center font-medium">
                                 S{sessionNum} Block {blockLetter}
                               </th>
                             ))
@@ -756,7 +907,7 @@ export default function AdminPage() {
                       </thead>
                       <tbody>
                         {studyConfig.crossover_mapping && Object.entries(studyConfig.crossover_mapping).map(([group, sessions]) => (
-                          <tr key={group} className="border-b border-gray-800">
+                          <tr key={group} className="border-b border-white/5">
                             <td className="py-3">
                               {editingGroupName === group ? (
                                 <input
@@ -780,7 +931,7 @@ export default function AdminPage() {
                                     }
                                   }}
                                   autoFocus
-                                  className="w-32 px-2 py-1 bg-medical-darker border border-gray-600 rounded text-white text-sm"
+                                  className="w-32 px-2 py-1 rounded bg-white/10 border border-white/20 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                                   maxLength={50}
                                 />
                               ) : (
@@ -794,7 +945,7 @@ export default function AdminPage() {
                                       })
                                     }
                                   }}
-                                  className="cursor-pointer hover:bg-gray-700 px-2 py-1 rounded text-white inline-flex items-center gap-1"
+                                  className="cursor-pointer hover:bg-white/10 px-2 py-1 rounded text-white inline-flex items-center gap-1 transition-all"
                                   title="클릭하여 수정"
                                 >
                                   {studyConfig.group_names?.[group] || group.replace('_', ' ').toUpperCase()}
@@ -802,7 +953,6 @@ export default function AdminPage() {
                                 </span>
                               )}
                             </td>
-                            {/* 세션/블록 데이터 동적 생성 */}
                             {Array.from({ length: studyConfig.total_sessions || 2 }, (_, si) => si + 1).map(sessionNum =>
                               Array.from({ length: studyConfig.total_blocks || 2 }, (_, bi) => String.fromCharCode(65 + bi)).map(blockLetter => {
                                 const sessionKey = `S${sessionNum}`
@@ -810,7 +960,11 @@ export default function AdminPage() {
                                 const mode = sessions[sessionKey]?.[blockKey]
                                 return (
                                   <td key={`${sessionKey}_${blockLetter}`} className="py-3 text-center">
-                                    <span className={`px-2 py-1 rounded text-xs ${mode === 'AIDED' ? 'bg-blue-900 text-blue-300' : 'bg-gray-700 text-gray-300'}`}>
+                                    <span className={`px-2.5 py-1 rounded-lg text-xs font-medium ${
+                                      mode === 'AIDED'
+                                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                    }`}>
                                       {mode || '-'}
                                     </span>
                                   </td>
@@ -830,36 +984,63 @@ export default function AdminPage() {
 
         {/* 대시보드 탭 */}
         {activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-white">진행 현황</h2>
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 flex items-center justify-center">
+                <ChartIcon className="w-5 h-5 text-cyan-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">진행 현황</h2>
+            </div>
 
             {/* 요약 카드 */}
             {dashboardSummary && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
-                  <p className="text-gray-400 text-sm">전체 리더</p>
-                  <p className="text-2xl font-bold text-white">{dashboardSummary.total_readers}</p>
-                  <p className="text-xs text-gray-500">시작: {dashboardSummary.readers_started} / 완료: {dashboardSummary.readers_completed}</p>
+                <div className="glass-card rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                      <UsersIcon className="w-5 h-5 text-blue-400" />
+                    </div>
+                    <p className="text-gray-400 text-sm">전체 리더</p>
+                  </div>
+                  <p className="text-3xl font-bold text-white">{dashboardSummary.total_readers}</p>
+                  <p className="text-xs text-gray-500 mt-1">시작: {dashboardSummary.readers_started} / 완료: {dashboardSummary.readers_completed}</p>
                 </div>
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
-                  <p className="text-gray-400 text-sm">전체 세션</p>
-                  <p className="text-2xl font-bold text-white">{dashboardSummary.total_sessions}</p>
-                  <p className="text-xs text-gray-500">완료: {dashboardSummary.completed_sessions} / 진행: {dashboardSummary.in_progress_sessions}</p>
+                <div className="glass-card rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                      <SessionIcon className="w-5 h-5 text-purple-400" />
+                    </div>
+                    <p className="text-gray-400 text-sm">전체 세션</p>
+                  </div>
+                  <p className="text-3xl font-bold text-white">{dashboardSummary.total_sessions}</p>
+                  <p className="text-xs text-gray-500 mt-1">완료: {dashboardSummary.completed_sessions} / 진행: {dashboardSummary.in_progress_sessions}</p>
                 </div>
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
-                  <p className="text-gray-400 text-sm">전체 진행률</p>
-                  <p className="text-2xl font-bold text-primary-400">{dashboardSummary.overall_progress_percent}%</p>
-                  <div className="mt-2 h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div className="glass-card rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                      <ChartIcon className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <p className="text-gray-400 text-sm">전체 진행률</p>
+                  </div>
+                  <p className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
+                    {dashboardSummary.overall_progress_percent}%
+                  </p>
+                  <div className="mt-2 h-2 bg-white/5 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-primary-500 transition-all"
+                      className="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 rounded-full transition-all progress-bar"
                       style={{ width: `${dashboardSummary.overall_progress_percent}%` }}
                     />
                   </div>
                 </div>
-                <div className="bg-medical-dark rounded-xl border border-gray-800 p-4">
-                  <p className="text-gray-400 text-sm">설정 상태</p>
-                  <p className={`text-2xl font-bold ${dashboardSummary.study_config_locked ? 'text-yellow-400' : 'text-green-400'}`}>
-                    {dashboardSummary.study_config_locked ? '🔒 잠김' : '🔓 열림'}
+                <div className="glass-card rounded-xl p-5">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${dashboardSummary.study_config_locked ? 'bg-amber-500/20' : 'bg-emerald-500/20'}`}>
+                      {dashboardSummary.study_config_locked ? <LockIcon className="w-5 h-5 text-amber-400" /> : <UnlockIcon className="w-5 h-5 text-emerald-400" />}
+                    </div>
+                    <p className="text-gray-400 text-sm">설정 상태</p>
+                  </div>
+                  <p className={`text-2xl font-bold ${dashboardSummary.study_config_locked ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {dashboardSummary.study_config_locked ? '잠김' : '열림'}
                   </p>
                 </div>
               </div>
@@ -867,20 +1048,22 @@ export default function AdminPage() {
 
             {/* 그룹별 진행률 */}
             {groupProgress.length > 0 && (
-              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
+              <div className="glass-card rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">그룹별 진행률</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {groupProgress.map(group => (
-                    <div key={group.group} className="p-4 bg-medical-darker rounded-lg">
+                    <div key={group.group} className="p-4 rounded-xl bg-white/5 border border-white/5">
                       <div className="flex justify-between items-center mb-2">
                         <span className="text-white font-medium">
                           {studyConfig?.group_names?.[`group_${group.group}`] || `Group ${group.group}`}
                         </span>
-                        <span className="text-primary-400 font-bold">{group.progress_percent}%</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 font-bold">
+                          {group.progress_percent}%
+                        </span>
                       </div>
-                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden mb-2">
+                      <div className="h-2 bg-white/5 rounded-full overflow-hidden mb-2">
                         <div
-                          className="h-full bg-primary-500 transition-all"
+                          className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all"
                           style={{ width: `${group.progress_percent}%` }}
                         />
                       </div>
@@ -895,68 +1078,69 @@ export default function AdminPage() {
 
             {/* 리더별 진행 현황 */}
             {readerProgress.length > 0 && (
-              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
+              <div className="glass-card rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-white mb-4">리더별 진행 현황</h3>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-gray-400 border-b border-gray-700">
-                        <th className="py-2 text-left">리더</th>
-                        <th className="py-2 text-center">그룹</th>
-                        {/* 세션 컬럼 - 연구 설정의 세션 수에 맞춰 동적 생성 */}
+                      <tr className="text-gray-400 border-b border-white/10">
+                        <th className="py-3 text-left font-medium">리더</th>
+                        <th className="py-3 text-center font-medium">그룹</th>
                         {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => (
-                          <th key={sessionNum} className="py-2 text-center">S{sessionNum} 진행률</th>
+                          <th key={sessionNum} className="py-3 text-center font-medium">S{sessionNum}</th>
                         ))}
-                        <th className="py-2 text-center">전체</th>
-                        <th className="py-2 text-center">상태</th>
-                        <th className="py-2 text-right">마지막 접속</th>
+                        <th className="py-3 text-center font-medium">전체</th>
+                        <th className="py-3 text-center font-medium">상태</th>
+                        <th className="py-3 text-right font-medium">마지막 접속</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {readerProgress.map(reader => {
-                        return (
-                          <tr key={reader.reader_id} className="border-b border-gray-800">
-                            <td className="py-3">
-                              <p className="text-white font-medium">{reader.name}</p>
-                              <p className="text-xs text-gray-500">{reader.reader_code}</p>
-                            </td>
-                            <td className="py-3 text-center text-gray-300">
-                              {reader.group
-                                ? (studyConfig?.group_names?.[`group_${reader.group}`] || `Group ${reader.group}`)
-                                : '-'}
-                            </td>
-                            {/* 세션 진행률 - 연구 설정의 세션 수에 맞춰 동적 생성 */}
-                            {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => {
-                              const session = reader.sessions.find(s => s.session_code === `S${sessionNum}`)
-                              return (
-                                <td key={sessionNum} className="py-3 text-center">
-                                  {session ? (
-                                    <span className={session.status === 'completed' ? 'text-green-400' : 'text-gray-300'}>
-                                      {session.progress_percent}%
-                                    </span>
-                                  ) : '-'}
-                                </td>
-                              )
-                            })}
-                            <td className="py-3 text-center text-primary-400 font-medium">
+                      {readerProgress.map(reader => (
+                        <tr key={reader.reader_id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                          <td className="py-3">
+                            <p className="text-white font-medium">{reader.name}</p>
+                            <p className="text-xs text-gray-500">{reader.reader_code}</p>
+                          </td>
+                          <td className="py-3 text-center text-gray-300">
+                            {reader.group
+                              ? (studyConfig?.group_names?.[`group_${reader.group}`] || `G${reader.group}`)
+                              : '-'}
+                          </td>
+                          {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => {
+                            const session = reader.sessions.find(s => s.session_code === `S${sessionNum}`)
+                            return (
+                              <td key={sessionNum} className="py-3 text-center">
+                                {session ? (
+                                  <span className={`px-2 py-0.5 rounded text-xs ${
+                                    session.status === 'completed'
+                                      ? 'bg-emerald-500/20 text-emerald-400'
+                                      : 'bg-white/10 text-gray-300'
+                                  }`}>
+                                    {session.progress_percent}%
+                                  </span>
+                                ) : <span className="text-gray-600">-</span>}
+                              </td>
+                            )
+                          })}
+                          <td className="py-3 text-center">
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 font-medium">
                               {reader.total_progress_percent}%
-                            </td>
-                            <td className="py-3 text-center">
-                              <span className={`px-2 py-1 rounded text-xs ${
-                                reader.status === 'completed' ? 'bg-green-900 text-green-300' :
-                                reader.status === 'active' ? 'bg-blue-900 text-blue-300' :
-                                'bg-gray-700 text-gray-300'
-                              }`}>
-                                {reader.status === 'completed' ? '완료' :
-                                 reader.status === 'active' ? '진행중' : '대기'}
-                              </span>
-                            </td>
-                            <td className="py-3 text-right text-gray-400 text-xs">
-                              {reader.last_accessed_at ? formatKST(reader.last_accessed_at) : '-'}
-                            </td>
-                          </tr>
-                        )
-                      })}
+                            </span>
+                          </td>
+                          <td className="py-3 text-center">
+                            <span className={`px-2 py-1 rounded-lg text-xs font-medium ${
+                              reader.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                              reader.status === 'active' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                              'bg-white/10 text-gray-400 border border-white/10'
+                            }`}>
+                              {reader.status === 'completed' ? '완료' : reader.status === 'active' ? '진행중' : '대기'}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right text-gray-400 text-xs">
+                            {reader.last_accessed_at ? formatKST(reader.last_accessed_at) : '-'}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -967,40 +1151,46 @@ export default function AdminPage() {
 
         {/* 리더 관리 탭 */}
         {activeTab === 'readers' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fade-in-up">
             {/* 헤더 */}
             <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-white">리더 관리</h2>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                  <UsersIcon className="w-5 h-5 text-purple-400" />
+                </div>
+                <h2 className="text-2xl font-bold text-white">리더 관리</h2>
+              </div>
               <button
                 onClick={() => setShowCreateForm(true)}
-                className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg btn-primary text-white"
               >
-                + 리더 추가
+                <PlusIcon className="w-4 h-4" />
+                리더 추가
               </button>
             </div>
 
             {/* 계정 생성 폼 */}
             {showCreateForm && (
-              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">
+              <div className="glass-card rounded-xl p-6">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  {createForm.role === 'admin' ? <AdminBadgeIcon className="w-5 h-5 text-amber-400" /> : <ReaderIcon className="w-5 h-5 text-blue-400" />}
                   새 {createForm.role === 'admin' ? '관리자' : '리더'} 생성
                 </h3>
                 <form onSubmit={handleCreateReader} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* 역할 선택 */}
                   <select
                     value={createForm.role}
                     onChange={e => setCreateForm({...createForm, role: e.target.value})}
-                    className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                    className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   >
-                    <option value="reader">리더 (Reader)</option>
-                    <option value="admin">관리자 (Admin)</option>
+                    <option value="reader" className="bg-gray-800">리더 (Reader)</option>
+                    <option value="admin" className="bg-gray-800">관리자 (Admin)</option>
                   </select>
                   <input
                     type="text"
                     placeholder={createForm.role === 'admin' ? '관리자 코드 (예: ADMIN01)' : '리더 코드 (예: R01)'}
                     value={createForm.reader_code}
                     onChange={e => setCreateForm({...createForm, reader_code: e.target.value})}
-                    className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                    className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     required
                   />
                   <input
@@ -1008,7 +1198,7 @@ export default function AdminPage() {
                     placeholder="이름"
                     value={createForm.name}
                     onChange={e => setCreateForm({...createForm, name: e.target.value})}
-                    className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                    className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     required
                   />
                   <input
@@ -1016,7 +1206,7 @@ export default function AdminPage() {
                     placeholder="이메일"
                     value={createForm.email}
                     onChange={e => setCreateForm({...createForm, email: e.target.value})}
-                    className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                    className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     required
                   />
                   <input
@@ -1024,31 +1214,30 @@ export default function AdminPage() {
                     placeholder="비밀번호"
                     value={createForm.password}
                     onChange={e => setCreateForm({...createForm, password: e.target.value})}
-                    className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                    className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     required
                   />
-                  {/* 그룹 선택 (리더만) - 연구 설정의 그룹명과 연동 */}
                   {createForm.role === 'reader' && (
                     <select
                       value={createForm.group}
                       onChange={e => setCreateForm({...createForm, group: parseInt(e.target.value)})}
-                      className="px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white"
+                      className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                     >
                       {Array.from({ length: studyConfig?.total_groups || 2 }, (_, i) => i + 1).map(groupNum => (
-                        <option key={groupNum} value={groupNum}>
+                        <option key={groupNum} value={groupNum} className="bg-gray-800">
                           {studyConfig?.group_names?.[`group_${groupNum}`] || `Group ${groupNum}`}
                         </option>
                       ))}
                     </select>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 md:col-span-2">
                     <button
                       type="submit"
                       disabled={loading}
-                      className={`px-4 py-2 text-white rounded-lg disabled:opacity-50 ${
+                      className={`px-6 py-2.5 rounded-lg text-white disabled:opacity-50 transition-all ${
                         createForm.role === 'admin'
-                          ? 'bg-yellow-600 hover:bg-yellow-700'
-                          : 'bg-primary-500 hover:bg-primary-600'
+                          ? 'bg-gradient-to-r from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25'
+                          : 'btn-primary'
                       }`}
                     >
                       생성
@@ -1056,7 +1245,7 @@ export default function AdminPage() {
                     <button
                       type="button"
                       onClick={() => setShowCreateForm(false)}
-                      className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600"
+                      className="px-6 py-2.5 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all"
                     >
                       취소
                     </button>
@@ -1068,99 +1257,99 @@ export default function AdminPage() {
             {/* 리더 목록 */}
             {loading ? (
               <div className="text-center py-12">
-                <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto"></div>
+                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
               </div>
             ) : (
-              <div className="bg-medical-dark rounded-xl border border-gray-800 overflow-hidden">
+              <div className="glass-card rounded-xl overflow-hidden">
                 <table className="w-full">
-                  <thead className="bg-medical-darker">
+                  <thead className="bg-white/5">
                     <tr>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">역할</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">코드</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">이름</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">이메일</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">그룹</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">세션</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">상태</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">작업</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">역할</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">코드</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">이름</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">이메일</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">그룹</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">세션</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">상태</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">작업</th>
                     </tr>
                   </thead>
                   <tbody>
                     {readers.map(reader => (
-                      <tr key={reader.id} className={`border-t border-gray-800 ${reader.role === 'admin' ? 'bg-yellow-900/10' : ''}`}>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded font-medium ${
+                      <tr key={reader.id} className={`border-t border-white/5 hover:bg-white/5 transition-colors ${reader.role === 'admin' ? 'bg-amber-500/5' : ''}`}>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg font-medium ${
                             reader.role === 'admin'
-                              ? 'bg-yellow-600 text-white'
-                              : 'bg-blue-600 text-white'
+                              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                              : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                           }`}>
+                            {reader.role === 'admin' ? <AdminBadgeIcon className="w-3 h-3" /> : <ReaderIcon className="w-3 h-3" />}
                             {reader.role === 'admin' ? '관리자' : '리더'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-white font-mono">{reader.reader_code}</td>
-                        <td className="px-4 py-3 text-white">{reader.name}</td>
-                        <td className="px-4 py-3 text-gray-400">{reader.email}</td>
-                        <td className="px-4 py-3 text-white">
+                        <td className="px-4 py-4 text-white font-mono text-sm">{reader.reader_code}</td>
+                        <td className="px-4 py-4 text-white">{reader.name}</td>
+                        <td className="px-4 py-4 text-gray-400 text-sm">{reader.email}</td>
+                        <td className="px-4 py-4 text-white">
                           {reader.role === 'admin'
-                            ? '-'
-                            : (studyConfig?.group_names?.[`group_${reader.group}`] || `Group ${reader.group || '-'}`)}
+                            ? <span className="text-gray-500">-</span>
+                            : (studyConfig?.group_names?.[`group_${reader.group}`] || `G${reader.group || '-'}`)}
                         </td>
-                        <td className="px-4 py-3 text-white">
-                          {reader.role === 'admin' ? '-' : `${reader.session_count}개`}
+                        <td className="px-4 py-4 text-white">
+                          {reader.role === 'admin' ? <span className="text-gray-500">-</span> : `${reader.session_count}개`}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded ${
-                            reader.is_active ? 'bg-green-600 text-white' : 'bg-gray-600 text-gray-300'
+                        <td className="px-4 py-4">
+                          <span className={`px-2.5 py-1 text-xs rounded-lg font-medium ${
+                            reader.is_active
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                              : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
                           }`}>
                             {reader.is_active ? '활성' : '비활성'}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-4">
                           <div className="flex gap-2 flex-wrap">
-                            {/* 리더 전용: 세션 할당 및 관리 - 연구 설정의 세션 수에 맞춰 동적 생성 */}
                             {reader.role === 'reader' && (
                               <>
                                 {Array.from({ length: studyConfig?.total_sessions || 2 }, (_, i) => i + 1).map(sessionNum => (
                                   <button
                                     key={sessionNum}
                                     onClick={() => handleAssignSession(reader.id, `S${sessionNum}`)}
-                                    className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                    className="px-2 py-1 text-xs rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 transition-all"
                                   >
-                                    S{sessionNum} 할당
+                                    S{sessionNum}
                                   </button>
                                 ))}
                                 {reader.session_count > 0 && (
                                   <button
                                     onClick={() => openSessionModal(reader)}
-                                    className="px-2 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-700"
+                                    className="px-2 py-1 text-xs rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 transition-all"
                                   >
-                                    세션 관리
+                                    관리
                                   </button>
                                 )}
                               </>
                             )}
-                            {/* 공통: 비밀번호 재설정 */}
                             <button
                               onClick={() => openResetPasswordModal(reader)}
-                              className="px-2 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700"
+                              className="px-2 py-1 text-xs rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 transition-all"
                             >
-                              비밀번호
+                              PW
                             </button>
-                            {/* 공통: 활성화/비활성화 토글 (자기 자신 제외) */}
                             {reader.id !== user?.id && (
                               reader.is_active ? (
                                 <button
                                   onClick={() => handleDeactivateReader(reader.id)}
-                                  className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                  className="px-2 py-1 text-xs rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-all"
                                 >
                                   비활성화
                                 </button>
                               ) : (
                                 <button
                                   onClick={() => handleReactivateReader(reader.id)}
-                                  className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                  className="px-2 py-1 text-xs rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 transition-all"
                                 >
-                                  재활성화
+                                  활성화
                                 </button>
                               )
                             )}
@@ -1182,42 +1371,47 @@ export default function AdminPage() {
 
         {/* 감사 로그 탭 */}
         {activeTab === 'logs' && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-white">감사 로그</h2>
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                <LogIcon className="w-5 h-5 text-orange-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">감사 로그</h2>
+            </div>
 
             {loading ? (
               <div className="text-center py-12">
-                <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto"></div>
+                <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
               </div>
             ) : (
-              <div className="bg-medical-dark rounded-xl border border-gray-800 overflow-hidden">
+              <div className="glass-card rounded-xl overflow-hidden">
                 <table className="w-full">
-                  <thead className="bg-medical-darker">
+                  <thead className="bg-white/5">
                     <tr>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">시간</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">사용자</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">작업</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">리소스</th>
-                      <th className="px-4 py-3 text-left text-gray-400 font-medium">IP</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">시간</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">사용자</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">작업</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">리소스</th>
+                      <th className="px-4 py-4 text-left text-gray-400 font-medium text-sm">IP</th>
                     </tr>
                   </thead>
                   <tbody>
                     {auditLogs.map(log => (
-                      <tr key={log.id} className="border-t border-gray-800">
+                      <tr key={log.id} className="border-t border-white/5 hover:bg-white/5 transition-colors">
                         <td className="px-4 py-3 text-gray-400 text-sm">
                           {formatKST(log.created_at)}
                         </td>
                         <td className="px-4 py-3 text-white">{log.reader_code || '-'}</td>
                         <td className="px-4 py-3">
-                          <span className={`px-2 py-1 text-xs rounded ${
-                            log.action.includes('LOGIN') ? 'bg-blue-600' :
-                            log.action.includes('ADMIN') ? 'bg-yellow-600' :
-                            'bg-gray-600'
-                          } text-white`}>
+                          <span className={`px-2.5 py-1 text-xs rounded-lg font-medium ${
+                            log.action.includes('LOGIN') ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                            log.action.includes('ADMIN') ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                            'bg-white/10 text-gray-300 border border-white/10'
+                          }`}>
                             {log.action}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-gray-400">
+                        <td className="px-4 py-3 text-gray-400 text-sm">
                           {log.resource_type ? `${log.resource_type}:${log.resource_id}` : '-'}
                         </td>
                         <td className="px-4 py-3 text-gray-500 font-mono text-sm">{log.ip_address}</td>
@@ -1237,36 +1431,59 @@ export default function AdminPage() {
 
         {/* 데이터 내보내기 탭 */}
         {activeTab === 'export' && (
-          <div className="space-y-6">
-            <h2 className="text-2xl font-bold text-white">데이터 내보내기</h2>
+          <div className="space-y-6 animate-fade-in-up">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                <DownloadIcon className="w-5 h-5 text-emerald-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">데이터 내보내기</h2>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">CSV 형식</h3>
-                <p className="text-gray-400 mb-4">
+              <div className="glass-card rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                    <DownloadIcon className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">CSV 형식</h3>
+                    <p className="text-gray-400 text-sm">스프레드시트 호환</p>
+                  </div>
+                </div>
+                <p className="text-gray-400 mb-6 text-sm">
                   환자 수준 결과와 병변 마커를 포함한 CSV 파일을 다운로드합니다.
                 </p>
                 <a
                   href={adminApi.getExportUrl('csv')}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg btn-primary text-white"
                 >
+                  <DownloadIcon className="w-4 h-4" />
                   CSV 다운로드
                 </a>
               </div>
 
-              <div className="bg-medical-dark rounded-xl border border-gray-800 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">JSON 형식</h3>
-                <p className="text-gray-400 mb-4">
+              <div className="glass-card rounded-xl p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                    <DownloadIcon className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">JSON 형식</h3>
+                    <p className="text-gray-400 text-sm">구조화된 데이터</p>
+                  </div>
+                </div>
+                <p className="text-gray-400 mb-6 text-sm">
                   구조화된 JSON 형식으로 전체 데이터를 다운로드합니다.
                 </p>
                 <a
                   href={adminApi.getExportUrl('json')}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-block px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-blue-500/25"
                 >
+                  <DownloadIcon className="w-4 h-4" />
                   JSON 다운로드
                 </a>
               </div>
@@ -1275,15 +1492,13 @@ export default function AdminPage() {
         )}
       </main>
 
-      {/* 비밀번호 재설정 모달 (다른 사용자) */}
+      {/* 비밀번호 재설정 모달 */}
       {showResetPasswordModal && resetPasswordTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 w-full max-w-md mx-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 animate-fade-in-up">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
+                <KeyIcon className="w-5 h-5 text-purple-400" />
                 비밀번호 재설정
               </h3>
               <button
@@ -1293,15 +1508,13 @@ export default function AdminPage() {
                   setResetPasswordForm({ newPassword: '', confirmPassword: '' })
                   setError(null)
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-400 hover:text-white transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="mb-4 p-3 bg-medical-darker rounded-lg">
+            <div className="mb-4 p-4 rounded-xl bg-white/5 border border-white/10">
               <p className="text-gray-400 text-sm">대상 계정</p>
               <p className="text-white font-medium">{resetPasswordTarget.name} ({resetPasswordTarget.reader_code})</p>
               <p className="text-gray-500 text-sm">{resetPasswordTarget.email}</p>
@@ -1314,7 +1527,7 @@ export default function AdminPage() {
                   type="password"
                   value={resetPasswordForm.newPassword}
                   onChange={e => setResetPasswordForm({...resetPasswordForm, newPassword: e.target.value})}
-                  className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
                   required
                   minLength={4}
                 />
@@ -1325,14 +1538,14 @@ export default function AdminPage() {
                   type="password"
                   value={resetPasswordForm.confirmPassword}
                   onChange={e => setResetPasswordForm({...resetPasswordForm, confirmPassword: e.target.value})}
-                  className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50"
                   required
                   minLength={4}
                 />
               </div>
 
               {error && (
-                <div className="p-3 bg-red-900/30 border border-red-600 rounded-lg">
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
                   <p className="text-red-400 text-sm">{error}</p>
                 </div>
               )}
@@ -1341,7 +1554,7 @@ export default function AdminPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 py-2 px-4 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                  className="flex-1 py-2.5 px-4 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/25 disabled:opacity-50 transition-all"
                 >
                   {loading ? '재설정 중...' : '비밀번호 재설정'}
                 </button>
@@ -1353,7 +1566,7 @@ export default function AdminPage() {
                     setResetPasswordForm({ newPassword: '', confirmPassword: '' })
                     setError(null)
                   }}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                  className="px-4 py-2.5 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all"
                 >
                   취소
                 </button>
@@ -1363,15 +1576,13 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* 비밀번호 변경 모달 (자기 자신) */}
+      {/* 비밀번호 변경 모달 */}
       {showPasswordModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 w-full max-w-md mx-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-md mx-4 animate-fade-in-up">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
+                <KeyIcon className="w-5 h-5 text-blue-400" />
                 비밀번호 변경
               </h3>
               <button
@@ -1380,11 +1591,9 @@ export default function AdminPage() {
                   setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
                   setError(null)
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-400 hover:text-white transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
 
@@ -1395,7 +1604,7 @@ export default function AdminPage() {
                   type="password"
                   value={passwordForm.currentPassword}
                   onChange={e => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
-                  className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   required
                 />
               </div>
@@ -1405,7 +1614,7 @@ export default function AdminPage() {
                   type="password"
                   value={passwordForm.newPassword}
                   onChange={e => setPasswordForm({...passwordForm, newPassword: e.target.value})}
-                  className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   required
                   minLength={4}
                 />
@@ -1416,14 +1625,14 @@ export default function AdminPage() {
                   type="password"
                   value={passwordForm.confirmPassword}
                   onChange={e => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
-                  className="w-full px-4 py-2 bg-medical-darker border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                   required
                   minLength={4}
                 />
               </div>
 
               {error && (
-                <div className="p-3 bg-red-900/30 border border-red-600 rounded-lg">
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
                   <p className="text-red-400 text-sm">{error}</p>
                 </div>
               )}
@@ -1432,7 +1641,7 @@ export default function AdminPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 py-2 px-4 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50 transition-colors"
+                  className="flex-1 py-2.5 px-4 rounded-lg btn-primary text-white disabled:opacity-50 transition-all"
                 >
                   {loading ? '변경 중...' : '비밀번호 변경'}
                 </button>
@@ -1443,7 +1652,7 @@ export default function AdminPage() {
                     setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' })
                     setError(null)
                   }}
-                  className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                  className="px-4 py-2.5 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all"
                 >
                   취소
                 </button>
@@ -1455,13 +1664,11 @@ export default function AdminPage() {
 
       {/* 세션 관리 모달 */}
       {showSessionModal && sessionTarget && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-medical-dark rounded-xl border border-gray-800 p-6 w-full max-w-lg mx-4">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="glass-card rounded-2xl p-6 w-full max-w-lg mx-4 animate-fade-in-up">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-                <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
+                <SessionIcon className="w-5 h-5 text-amber-400" />
                 세션 관리
               </h3>
               <button
@@ -1471,23 +1678,23 @@ export default function AdminPage() {
                   setSessionTargetDetails(null)
                   setError(null)
                 }}
-                className="text-gray-400 hover:text-white"
+                className="text-gray-400 hover:text-white transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <CloseIcon className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="mb-4 p-3 bg-medical-darker rounded-lg">
+            <div className="mb-4 p-4 rounded-xl bg-white/5 border border-white/10">
               <p className="text-gray-400 text-sm">리더 정보</p>
               <p className="text-white font-medium">{sessionTarget.name} ({sessionTarget.reader_code})</p>
-              <p className="text-gray-500 text-sm">Group {sessionTarget.group || '-'}</p>
+              <p className="text-gray-500 text-sm">
+                {studyConfig?.group_names?.[`group_${sessionTarget.group}`] || `Group ${sessionTarget.group || '-'}`}
+              </p>
             </div>
 
             {!sessionTargetDetails ? (
               <div className="text-center py-8">
-                <div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full mx-auto"></div>
+                <div className="animate-spin w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full mx-auto"></div>
                 <p className="text-gray-400 mt-2">세션 정보 로딩 중...</p>
               </div>
             ) : sessionTargetDetails.sessions.length === 0 ? (
@@ -1497,40 +1704,41 @@ export default function AdminPage() {
             ) : (
               <div className="space-y-3">
                 {sessionTargetDetails.sessions.map(session => (
-                  <div key={session.session_id} className="p-4 bg-medical-darker rounded-lg border border-gray-700">
+                  <div key={session.session_id} className="p-4 rounded-xl bg-white/5 border border-white/10">
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-white font-medium">{session.session_code}</span>
-                          <span className={`px-2 py-0.5 text-xs rounded ${
-                            session.status === 'completed' ? 'bg-green-600 text-white' :
-                            session.status === 'in_progress' ? 'bg-blue-600 text-white' :
-                            'bg-gray-600 text-gray-300'
+                          <span className={`px-2 py-0.5 text-xs rounded-lg font-medium ${
+                            session.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            session.status === 'in_progress' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                            'bg-white/10 text-gray-400 border border-white/10'
                           }`}>
-                            {session.status === 'completed' ? '완료' :
-                             session.status === 'in_progress' ? '진행중' : '대기'}
+                            {session.status === 'completed' ? '완료' : session.status === 'in_progress' ? '진행중' : '대기'}
                           </span>
                         </div>
                         <div className="text-sm text-gray-400 mt-1">
-                          Block A: {session.block_a_mode} / Block B: {session.block_b_mode}
+                          Block A: <span className={session.block_a_mode === 'AIDED' ? 'text-amber-400' : 'text-blue-400'}>{session.block_a_mode}</span>
+                          {' / '}
+                          Block B: <span className={session.block_b_mode === 'AIDED' ? 'text-amber-400' : 'text-blue-400'}>{session.block_b_mode}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
                         <button
                           onClick={() => handleResetSession(session.session_id)}
                           disabled={loading}
-                          className="px-3 py-1 text-sm bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
-                          title="진행 상태와 제출된 결과를 모두 삭제하고 처음부터 다시 시작"
+                          className="px-3 py-1.5 text-sm rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 hover:bg-amber-500/30 disabled:opacity-50 transition-all"
+                          title="초기화"
                         >
                           초기화
                         </button>
                         <button
                           onClick={() => handleDeleteSession(session.session_id)}
                           disabled={loading}
-                          className="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
-                          title="세션 할당을 취소 (제출된 결과는 유지)"
+                          className="px-3 py-1.5 text-sm rounded-lg bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 disabled:opacity-50 transition-all"
+                          title="할당 취소"
                         >
-                          할당 취소
+                          취소
                         </button>
                       </div>
                     </div>
@@ -1540,7 +1748,7 @@ export default function AdminPage() {
             )}
 
             {error && (
-              <div className="mt-4 p-3 bg-red-900/30 border border-red-600 rounded-lg">
+              <div className="mt-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30">
                 <p className="text-red-400 text-sm">{error}</p>
               </div>
             )}
@@ -1553,7 +1761,7 @@ export default function AdminPage() {
                   setSessionTargetDetails(null)
                   setError(null)
                 }}
-                className="w-full py-2 px-4 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                className="w-full py-2.5 px-4 rounded-lg bg-white/5 text-gray-300 hover:bg-white/10 transition-all"
               >
                 닫기
               </button>
