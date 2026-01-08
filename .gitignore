@@ -69,3 +69,10 @@ CLAUDE.md
 
 # Dataset (large files)
 dataset/
+
+# Docker
+docker-compose.override.yml
+
+# PID files
+*.pid
+.server.pid

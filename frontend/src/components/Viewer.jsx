@@ -27,7 +27,7 @@
  * ============================================================================
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import SliceCanvas from './SliceCanvas'
 import NiiVueCanvas from './NiiVueCanvas'
 import { api } from '../services/api'
@@ -123,6 +123,10 @@ export function Viewer({
   const [baselineSlice, setBaselineSlice] = useState(currentSlice)
   const [followupSlice, setFollowupSlice] = useState(currentSlice)
 
+  // ★ delta 기반 동기화용 ref (마지막 슬라이스 값 추적)
+  const lastBaselineRef = useRef(0)
+  const lastFollowupRef = useRef(0)
+
   // 키보드 단축키: 화살표(슬라이스 이동), L(동시 스크롤 토글)
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -162,6 +166,15 @@ export function Viewer({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [syncScroll, totalSlices, onSliceChange])
 
+  // caseId 변경 시 슬라이스 초기화 (다음 케이스로 넘어갈 때 1번 슬라이스에서 시작)
+  useEffect(() => {
+    setBaselineSlice(0)
+    setFollowupSlice(0)
+    // ★ ref도 함께 초기화 (delta 계산용)
+    lastBaselineRef.current = 0
+    lastFollowupRef.current = 0
+  }, [caseId])
+
   // WebGL/NiiVue 지원 여부 확인
   const webglSupport = useMemo(() => checkNiiVueSupport(), [])
   const useWebGL = webglSupport.supported
@@ -187,27 +200,35 @@ export function Viewer({
   }, [currentSlice, totalSlices, onSliceChange])
 
   // Baseline 슬라이스 변경 핸들러
+  // ★ delta 기반 동기화: 각자 위치 유지, 변경량만 동시 적용
   const handleBaselineSliceChange = useCallback((newSlice) => {
-    if (syncScroll) {
-      const delta = newSlice - baselineSlice
-      setBaselineSlice(newSlice)
-      setFollowupSlice(prev => Math.max(0, Math.min(prev + delta, totalSlices - 1)))
-    } else {
-      setBaselineSlice(newSlice)
+    const delta = newSlice - lastBaselineRef.current
+    lastBaselineRef.current = newSlice
+    setBaselineSlice(newSlice)
+
+    // 동시 스크롤 ON이고 실제 변경이 있을 때만 followup도 이동
+    if (syncScroll && delta !== 0) {
+      const newFollowup = Math.max(0, Math.min(lastFollowupRef.current + delta, totalSlices - 1))
+      lastFollowupRef.current = newFollowup
+      setFollowupSlice(newFollowup)
     }
-  }, [syncScroll, baselineSlice, totalSlices])
+  }, [syncScroll, totalSlices])
 
   // Followup 슬라이스 변경 핸들러
+  // ★ delta 기반 동기화: 각자 위치 유지, 변경량만 동시 적용
   const handleFollowupSliceChange = useCallback((newSlice) => {
-    if (syncScroll) {
-      const delta = newSlice - followupSlice
-      setFollowupSlice(newSlice)
-      setBaselineSlice(prev => Math.max(0, Math.min(prev + delta, totalSlices - 1)))
-    } else {
-      setFollowupSlice(newSlice)
+    const delta = newSlice - lastFollowupRef.current
+    lastFollowupRef.current = newSlice
+    setFollowupSlice(newSlice)
+
+    // 동시 스크롤 ON이고 실제 변경이 있을 때만 baseline도 이동
+    if (syncScroll && delta !== 0) {
+      const newBaseline = Math.max(0, Math.min(lastBaselineRef.current + delta, totalSlices - 1))
+      lastBaselineRef.current = newBaseline
+      setBaselineSlice(newBaseline)
     }
     onSliceChange?.(newSlice)
-  }, [syncScroll, followupSlice, totalSlices, onSliceChange])
+  }, [syncScroll, totalSlices, onSliceChange])
 
   // NiiVue용 병변 추가 핸들러
   const handleNiiVueAddLesion = useCallback((x, y, z) => {

@@ -42,9 +42,14 @@ def _utc_now() -> datetime:
 # 데이터베이스 설정
 # =============================================================================
 
-# 결과 저장 경로
-RESULTS_DIR = Path(__file__).parent.parent.parent.parent / "results"
-RESULTS_DIR.mkdir(exist_ok=True)
+# config에서 결과 저장 경로 가져오기 (환경 변수 지원)
+from app.config import settings
+RESULTS_DIR = settings.RESULTS_DIR
+try:
+    RESULTS_DIR.mkdir(exist_ok=True)
+except PermissionError:
+    # Docker 환경에서 이미 존재하는 볼륨의 경우 무시
+    pass
 DATABASE_URL = f"sqlite+aiosqlite:///{RESULTS_DIR}/reader_study.db"
 
 # 엔진 및 세션 설정

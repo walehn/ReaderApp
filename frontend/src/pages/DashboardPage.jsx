@@ -109,6 +109,30 @@ const ArrowRightIcon = ({ className = "w-5 h-5" }) => (
 )
 
 // =============================================================================
+// 유틸리티 함수
+// =============================================================================
+
+/**
+ * ISO 날짜 문자열을 한국 시간(KST)으로 변환
+ * 서버가 UTC 시간을 timezone 정보 없이 반환하므로 'Z'를 추가하여 UTC로 해석
+ */
+function formatKST(isoString) {
+  if (!isoString) return '-'
+  // 서버에서 받은 시간에 'Z'가 없으면 추가 (UTC임을 명시)
+  const utcString = isoString.endsWith('Z') ? isoString : isoString + 'Z'
+  const date = new Date(utcString)
+  return date.toLocaleString('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  })
+}
+
+// =============================================================================
 // 메인 컴포넌트
 // =============================================================================
 
@@ -487,7 +511,7 @@ export default function DashboardPage() {
                     {session.last_accessed_at && (
                       <div className="flex items-center gap-2 text-xs text-gray-600 mb-4">
                         <ClockIcon className="w-3.5 h-3.5" />
-                        마지막 접속: {new Date(session.last_accessed_at).toLocaleString('ko-KR')}
+                        마지막 접속: {formatKST(session.last_accessed_at)}
                       </div>
                     )}
 
@@ -527,7 +551,7 @@ export default function DashboardPage() {
 
         {/* 안내사항 */}
         <div className="mt-10 glass-card rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: '400ms', opacity: 0 }}>
-          <div className="flex items-center gap-3 mb-4">
+          <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
               <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
@@ -536,26 +560,73 @@ export default function DashboardPage() {
             </div>
             <h3 className="text-lg font-semibold text-white">안내사항</h3>
           </div>
-          <ul className="space-y-3 text-gray-400 text-sm">
-            <li className="flex items-start gap-3">
-              <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-blue-400 text-xs font-bold">1</span>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
+            {/* 세션 구조 */}
+            <div className="space-y-3">
+              <h4 className="text-white font-medium flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 text-xs">📋</span>
+                세션 구조
+              </h4>
+              <ul className="space-y-2 text-gray-400 ml-8">
+                <li>• 각 세션은 <span className="text-blue-400 font-medium">Block A</span>와 <span className="text-blue-400 font-medium">Block B</span>로 구성되며, 순차적으로 진행됩니다.</li>
+                <li>• 각 블록은 <span className="text-amber-400 font-medium">UNAIDED</span>(비보조) 또는 <span className="text-emerald-400 font-medium">AIDED</span>(AI 보조) 모드로 진행됩니다.</li>
+              </ul>
+            </div>
+
+            {/* 케이스 판독 방법 */}
+            <div className="space-y-3">
+              <h4 className="text-white font-medium flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs">🔍</span>
+                케이스 판독 방법
+              </h4>
+              <ul className="space-y-2 text-gray-400 ml-8">
+                <li>• <span className="text-white font-medium">환자 판정</span> (필수): 새로운 전이 병변 존재 여부를 판단해주세요.</li>
+                <li>• <span className="text-white font-medium">병변 마킹</span> (선택): 전이 병변이 있다고 판단되면 <span className="text-blue-400">최대 3개</span>까지 마킹할 수 있습니다.</li>
+                <li>• 병변의 <span className="text-amber-400">크기나 개수에 상관없이</span> 가장 의심되는 병변부터 순서대로 마킹해주세요.</li>
+                <li>• 각 병변에 대해 확신도(<span className="text-red-400">Definite</span>/<span className="text-amber-400">Probable</span>/<span className="text-emerald-400">Possible</span>)를 선택해주세요.</li>
+              </ul>
+            </div>
+
+            {/* 뷰어 사용법 */}
+            <div className="space-y-3">
+              <h4 className="text-white font-medium flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-purple-500/20 flex items-center justify-center text-purple-400 text-xs">🖥️</span>
+                뷰어 사용법
+              </h4>
+              <ul className="space-y-2 text-gray-400 ml-8">
+                <li>• <span className="text-white font-medium">화면 구성</span>: 좌측 Baseline, 우측 Follow-up 영상이 표시됩니다.</li>
+                <li>• <span className="text-white font-medium">슬라이스 이동</span>: 마우스 휠 또는 키보드 <span className="text-blue-400">↑↓</span> 키로 이동합니다.</li>
+                <li>• <span className="text-white font-medium">동시 스크롤</span>: <span className="text-blue-400">'L'</span> 키 또는 버튼으로 ON/OFF 전환</li>
+                <li>• <span className="text-white font-medium">W/L 조정</span>: Liver/Soft 프리셋 선택 또는 드래그 모드로 조정</li>
+                <li>• <span className="text-white font-medium">병변 마킹</span>: Follow-up 영상에서 클릭하여 마킹합니다.</li>
+              </ul>
+            </div>
+
+            {/* AIDED 모드 & 진행 상태 */}
+            <div className="space-y-3">
+              <h4 className="text-white font-medium flex items-center gap-2">
+                <span className="w-6 h-6 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-400 text-xs">⚡</span>
+                AIDED 모드 & 진행 상태
+              </h4>
+              <ul className="space-y-2 text-gray-400 ml-8">
+                <li>• <span className="text-emerald-400 font-medium">AIDED 모드</span>에서는 AI 예측 오버레이가 표시됩니다.</li>
+                <li>• AI 결과는 <span className="text-amber-400">참고용</span>이며, 최종 판단은 리더의 소견을 따릅니다.</li>
+                <li>• 세션 진행 중 브라우저를 닫아도 진행 상태가 <span className="text-emerald-400">자동 저장</span>됩니다.</li>
+                <li>• 완료된 세션은 다시 진행할 수 없습니다. 필요시 관리자에게 문의하세요.</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* 주의사항 */}
+          <div className="mt-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-400 text-lg">⚠️</span>
+              <div className="text-gray-300 text-sm">
+                <span className="text-amber-400 font-medium">주의사항</span>: 각 케이스 판독에 충분한 시간을 가지고 신중하게 판단해주세요. 판독 소요 시간이 기록됩니다.
               </div>
-              <span>각 세션은 <span className="text-blue-400 font-medium">Block A</span>와 <span className="text-blue-400 font-medium">Block B</span>로 구성되며, 순차적으로 진행됩니다.</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-blue-400 text-xs font-bold">2</span>
-              </div>
-              <span>세션 진행 중 브라우저를 닫아도 진행 상태가 자동으로 저장됩니다.</span>
-            </li>
-            <li className="flex items-start gap-3">
-              <div className="w-5 h-5 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-blue-400 text-xs font-bold">3</span>
-              </div>
-              <span>완료된 세션은 다시 진행할 수 없습니다. 필요시 관리자에게 문의하세요.</span>
-            </li>
-          </ul>
+            </div>
+          </div>
         </div>
       </main>
     </div>

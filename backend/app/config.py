@@ -21,28 +21,57 @@ Configuration - Reader Study MVP
 """
 
 from pathlib import Path
-from pydantic_settings import BaseSettings
-from typing import Optional, List
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator, BeforeValidator
+from typing import Optional, List, Annotated
 import os
 import secrets
+
+
+def parse_ip_ranges(v):
+    """환경 변수에서 IP 범위 리스트 파싱"""
+    if v is None or v == "":
+        return []
+    if isinstance(v, list):
+        return v
+    # 쉼표로 구분된 문자열을 리스트로 변환
+    return [ip.strip() for ip in v.split(",") if ip.strip()]
+
+
+# 커스텀 타입: 문자열을 리스트로 변환
+IPRangeList = Annotated[List[str], BeforeValidator(parse_ip_ranges)]
+
+
+# 기본 경로 계산 (클래스 외부에서)
+_DEFAULT_PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 class Settings(BaseSettings):
     """애플리케이션 설정"""
 
     # 기본 경로 (프로젝트 루트 기준)
-    PROJECT_ROOT: Path = Path(__file__).parent.parent.parent
+    PROJECT_ROOT: Path = _DEFAULT_PROJECT_ROOT
 
-    # 데이터 디렉토리
-    CASES_DIR: Path = PROJECT_ROOT / "cases"
-    SESSIONS_DIR: Path = PROJECT_ROOT / "sessions"
-    RESULTS_DIR: Path = PROJECT_ROOT / "results"
+    # 데이터 디렉토리 (환경 변수로 오버라이드 가능)
+    CASES_DIR: Path = _DEFAULT_PROJECT_ROOT / "cases"
+    SESSIONS_DIR: Path = _DEFAULT_PROJECT_ROOT / "sessions"
+    RESULTS_DIR: Path = _DEFAULT_PROJECT_ROOT / "results"
 
     # Dataset 디렉토리 (실제 NIfTI 파일 저장소)
-    DATASET_DIR: Path = PROJECT_ROOT / "dataset"
-    POSITIVE_DIR: Path = DATASET_DIR / "positive"
-    NEGATIVE_DIR: Path = DATASET_DIR / "negative"
-    AI_LABEL_DIR: Path = DATASET_DIR / "LabelAI"
+    DATASET_DIR: Path = _DEFAULT_PROJECT_ROOT / "dataset"
+    POSITIVE_DIR: Optional[Path] = None  # DATASET_DIR 기반으로 계산
+    NEGATIVE_DIR: Optional[Path] = None
+    AI_LABEL_DIR: Optional[Path] = None
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # DATASET_DIR 기반 하위 디렉토리 설정
+        if self.POSITIVE_DIR is None:
+            object.__setattr__(self, 'POSITIVE_DIR', self.DATASET_DIR / "positive")
+        if self.NEGATIVE_DIR is None:
+            object.__setattr__(self, 'NEGATIVE_DIR', self.DATASET_DIR / "negative")
+        if self.AI_LABEL_DIR is None:
+            object.__setattr__(self, 'AI_LABEL_DIR', self.DATASET_DIR / "LabelAI")
 
     # 서버 설정
     HOST: str = "0.0.0.0"
@@ -70,16 +99,28 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_HOURS: int = 8  # 토큰 만료 시간
 
     # IP 제한 (선택) - 비어있으면 제한 없음
-    ALLOWED_IP_RANGES: List[str] = []  # 예: ["192.168.0.0/16", "10.0.0.0/8"]
+    # 환경 변수에서는 쉼표로 구분된 문자열로 설정: "192.168.0.0/16,10.0.0.0/8"
+    ALLOWED_IP_RANGES: IPRangeList = []
 
-    class Config:
-        env_prefix = "READER_STUDY_"
+    # pydantic-settings v2 설정
+    model_config = SettingsConfigDict(
+        env_prefix="READER_STUDY_",
+        # 프로젝트 루트의 .env 파일 로드 (개발/Docker 공용)
+        env_file=str(_DEFAULT_PROJECT_ROOT / ".env"),
+        env_file_encoding="utf-8",
+        # Docker용 변수(HTTP_PORT, DEBUG 등)는 무시
+        extra="ignore",
+    )
 
 
 # 싱글톤 설정 인스턴스
 settings = Settings()
 
-# 디렉토리 자동 생성
-settings.CASES_DIR.mkdir(exist_ok=True)
-settings.SESSIONS_DIR.mkdir(exist_ok=True)
-settings.RESULTS_DIR.mkdir(exist_ok=True)
+# 디렉토리 자동 생성 (Docker 환경에서는 볼륨 마운트로 이미 존재할 수 있음)
+try:
+    settings.CASES_DIR.mkdir(exist_ok=True)
+    settings.SESSIONS_DIR.mkdir(exist_ok=True)
+    settings.RESULTS_DIR.mkdir(exist_ok=True)
+except PermissionError:
+    # Docker 환경에서 읽기 전용 볼륨이거나 권한 없는 경우 무시
+    pass

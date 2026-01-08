@@ -72,8 +72,8 @@ const WL_PRESETS = {
   soft: { center: 40, width: 400 }
 }
 
-// API 기본 URL
-const API_BASE = 'http://localhost:8000'
+// API 기본 URL (Docker 환경에서는 Nginx 프록시 사용)
+const API_BASE = '/api'
 
 export function NiiVueCanvas({
   caseId,
@@ -98,6 +98,7 @@ export function NiiVueCanvas({
   const nvRef = useRef(null)
   const overlayCanvasRef = useRef(null)
   const onSliceChangeRef = useRef(onSliceChange)  // 최신 콜백 참조용
+  const lastSliceRef = useRef(null)  // 중복 호출 방지용
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
@@ -167,9 +168,16 @@ export function NiiVueCanvas({
         console.log('[NiiVue] Instance created (once)')
 
         // 슬라이스 변경 콜백 설정 (ref를 통해 항상 최신 함수 호출)
+        // ★ 중복 호출 방지: NiiVue가 한 번의 휠에 여러 번 호출할 수 있으므로
+        //    같은 슬라이스 값이면 무시하여 delta 기반 동기화 버그 방지
         nv.onLocationChange = (data) => {
           if (data && data.vox && onSliceChangeRef.current) {
             const slice = Math.round(data.vox[2])
+
+            // 같은 슬라이스 값이면 콜백 호출 안 함 (중복 방지)
+            if (lastSliceRef.current === slice) return
+            lastSliceRef.current = slice
+
             onSliceChangeRef.current(slice)
           }
         }
@@ -263,8 +271,9 @@ export function NiiVueCanvas({
           // Axial 뷰로 설정
           nv.setSliceType(SLICE_TYPE.AXIAL)
 
-          // 초기 슬라이스 설정
-          if (currentSlice > 0 && currentSlice < numSlices) {
+          // 초기 슬라이스 설정 (항상 첫 번째 슬라이스로 시작)
+          // crosshairPos[2]는 0~1 사이 비율 (0 = 첫 슬라이스, 1 = 마지막 슬라이스)
+          if (numSlices > 1) {
             nv.scene.crosshairPos[2] = currentSlice / (numSlices - 1)
             nv.drawScene()
           }
@@ -395,14 +404,13 @@ export function NiiVueCanvas({
   }, [aiOverlayNiftiUrl, showOverlay, volumeLoaded, caseId])
 
   // 마우스 휠 핸들러
+  // ★ NiiVue 내부에서 휠 이벤트를 처리하고 onLocationChange로 슬라이스 변경을 알려줌
+  // ★ 여기서 중복으로 onSliceChange를 호출하면 동시 스크롤 시 2배 이동 버그 발생
   const handleWheel = useCallback((e) => {
     e.preventDefault()
-    if (!onSliceChange || maxSlice === 0) return
-
-    const delta = e.deltaY > 0 ? -1 : 1
-    const newSlice = Math.max(0, Math.min(currentSlice + delta, maxSlice))
-    onSliceChange(newSlice)
-  }, [currentSlice, maxSlice, onSliceChange])
+    // NiiVue가 자체적으로 휠 처리 → onLocationChange 콜백 → 부모에 슬라이스 변경 알림
+    // 따라서 여기서 별도로 onSliceChange를 호출하지 않음
+  }, [])
 
   // 캔버스 클릭 핸들러 (병변 추가)
   const handleClick = useCallback((e) => {

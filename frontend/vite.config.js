@@ -25,7 +25,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 5174,  // Docker는 5173 사용, 개발 서버는 5174 사용
     host: true,  // 0.0.0.0 바인딩 - 원격 접속 허용 (LAN 내 다른 기기에서 접속 가능)
     // Cross-Origin Isolation 헤더 (NiiVue SharedArrayBuffer 지원용)
     headers: {

@@ -429,7 +429,7 @@ export default function ViewerPage() {
           </div>
 
           {/* 메인 레이아웃 */}
-          <div className="space-y-4 animate-fade-in-up" style={{ animationDelay: '200ms', opacity: 0 }}>
+          <div className="space-y-4 !mt-2 animate-fade-in-up" style={{ animationDelay: '200ms', opacity: 0 }}>
             {/* 뷰어 영역 */}
             <div className="w-full relative">
               {/* 로딩 오버레이 */}

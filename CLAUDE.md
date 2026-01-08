@@ -1,36 +1,6 @@
 # Claude Code Guidelines
 
-## 환경 설정
-
-### 운영체제
-- Windows 10/11
-
-### Python 가상환경
-- **위치**: `D:\ReaderApp\ReaderApp\`
-- **Python 버전**: 3.13.5
-- **활성화 방법**:
-  ```powershell
-  # PowerShell
-  D:\ReaderApp\ReaderApp\Scripts\Activate.ps1
-
-  # CMD
-  D:\ReaderApp\ReaderApp\Scripts\activate.bat
-
-  # Git Bash
-  source D:/ReaderApp/ReaderApp/Scripts/activate
-  ```
-- **패키지 설치**: `pip install -r backend/requirements.txt`
-
-### 주요 의존성
-- FastAPI 0.128.0 (웹 프레임워크)
-- Uvicorn 0.40.0 (ASGI 서버)
-- nibabel 5.3.3 (NIfTI 의료 이미지 처리)
-- SQLAlchemy 2.0.45 (데이터베이스 ORM)
-- Pydantic 2.12.5 (데이터 검증)
-
----
-
-## 코딩 가이드라인
+0. Operating system: Ubuntu 22.04, python venv environment name: ReaderApp
 
 1. All output must be in Korean.
 

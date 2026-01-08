@@ -51,8 +51,8 @@ export function useCase(caseId, maxLesions = 3) {
         setError(null)
         const caseMeta = await api.getCaseMeta(caseId)
         setMeta(caseMeta)
-        // 중간 슬라이스로 초기화
-        setCurrentSlice(Math.floor(caseMeta.slices / 2))
+        // 첫 번째 슬라이스(인덱스 0)로 초기화
+        setCurrentSlice(0)
         // 병변 초기화
         setLesions([])
       } catch (err) {
@@ -145,12 +145,11 @@ export function useCase(caseId, maxLesions = 3) {
 
   // 케이스 초기화 (새 케이스 시작 시)
   const resetCase = useCallback(() => {
-    if (meta) {
-      setCurrentSlice(Math.floor(meta.slices / 2))
-    }
+    // 첫 번째 슬라이스(인덱스 0)로 초기화
+    setCurrentSlice(0)
     setLesions([])
     setWlPreset('soft')
-  }, [meta])
+  }, [])
 
   return {
     caseId,
