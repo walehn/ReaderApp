@@ -162,6 +162,8 @@ export function useCase(caseId, maxLesions = 3) {
     getCurrentWL,
     lesions,
     aiAvailable: meta?.ai_available || false,
+    zFlippedBaseline: meta?.z_flipped_baseline || false,
+    zFlippedFollowup: meta?.z_flipped_followup || false,
     loading,
     error,
     setSlice,

@@ -8,7 +8,7 @@ NIfTI Service - Reader Study MVP
   - load_volume(): NIfTI 볼륨 로드 (캐시 활용)
   - get_case_metadata(): 케이스 메타데이터 조회
   - render_slice(): 특정 Z 슬라이스를 PNG로 렌더링
-  - render_overlay(): AI 확률맵 오버레이 렌더링
+  - load_ai_prob(): AI 레이블 볼륨 로드 (NiiVue에서 직접 사용)
 
 케이스 ID 형식:
   - Legacy: "case_0001" (cases 폴더)
@@ -147,16 +147,49 @@ class NIfTIService:
     # 볼륨 로딩
     # =========================================================================
 
-    def _load_nifti_sync(self, filepath: Path) -> Tuple[np.ndarray, list]:
-        """NIfTI 파일 동기 로드"""
+    def _detect_z_orientation(self, img: nib.Nifti1Image) -> bool:
+        """
+        NIfTI 이미지의 Z축 방향 감지
+
+        NIfTI affine matrix의 Z축 방향 벡터(affine[2,2])를 분석하여
+        슬라이스 순서가 Inferior→Superior인지 Superior→Inferior인지 판단합니다.
+
+        의료 영상 표준:
+          - 첫 슬라이스(index 0) = Superior (머리/상복부 쪽)
+          - 마지막 슬라이스 = Inferior (발/하복부 쪽)
+
+        Returns:
+            True: 반전 필요 (현재 슬라이스 0 = Inferior/골반)
+            False: 정상 (현재 슬라이스 0 = Superior/간)
+        """
+        affine = img.affine
+        z_direction = affine[2, 2]
+
+        # 실제 데이터 검증 결과:
+        # - 대부분 케이스: affine[2,2] > 0 (양수) → 정상 (간이 먼저 나옴)
+        # - 일부 케이스: affine[2,2] < 0 (음수) → 반전 필요 (골반이 먼저 나옴)
+        return z_direction < 0
+
+    def _load_nifti_sync(self, filepath: Path) -> Tuple[np.ndarray, list, bool]:
+        """
+        NIfTI 파일 동기 로드 (Z축 방향 정보 포함)
+
+        Returns:
+            (volume_data, spacing, z_flipped) 튜플
+            - z_flipped: True면 프론트엔드에서 슬라이스 인덱스 반전 필요
+        """
         img = nib.load(str(filepath))
         data = img.get_fdata().astype(np.float32)
         spacing = list(img.header.get_zooms()[:3])
-        return data, spacing
+
+        # Z축 방향 감지
+        z_flipped = self._detect_z_orientation(img)
+
+        return data, spacing, z_flipped
 
     async def load_volume(
         self, case_id: str, series: str
-    ) -> Tuple[np.ndarray, list]:
+    ) -> Tuple[np.ndarray, list, bool]:
         """
         NIfTI 볼륨 로드 (캐시 우선)
 
@@ -165,7 +198,8 @@ class NIfTIService:
             series: 시리즈 종류 ("baseline" | "followup")
 
         Returns:
-            (volume_data, spacing) 튜플
+            (volume_data, spacing, z_flipped) 튜플
+            - z_flipped: Z축 반전 필요 여부 (affine matrix 기반 감지)
         """
         # 캐시 확인
         cached = get_cached_volume(case_id, series)
@@ -179,14 +213,14 @@ class NIfTIService:
 
         # 비동기로 파일 로드
         loop = asyncio.get_event_loop()
-        data, spacing = await loop.run_in_executor(
+        data, spacing, z_flipped = await loop.run_in_executor(
             _executor, self._load_nifti_sync, filepath
         )
 
         # 캐시 저장
-        set_cached_volume(case_id, series, data, spacing)
+        set_cached_volume(case_id, series, data, spacing, z_flipped)
 
-        return data, spacing
+        return data, spacing, z_flipped
 
     async def load_ai_prob(self, case_id: str) -> Optional[np.ndarray]:
         """AI 확률맵 로드"""
@@ -220,15 +254,16 @@ class NIfTIService:
             case_id: 케이스 ID (예: "case_0001", "pos_enriched_001_...", "neg_008_...")
 
         Returns:
-            CaseMeta: shape, slices, spacing, ai_available
+            CaseMeta: shape, slices, spacing, ai_available, z_flipped_baseline, z_flipped_followup
         """
         # 파일 경로 확인
         filepath = self._get_volume_filepath(case_id, "followup")
         if filepath is None:
             raise FileNotFoundError(f"Case not found: {case_id}")
 
-        # followup 볼륨 기준으로 메타데이터 추출
-        data, spacing = await self.load_volume(case_id, "followup")
+        # baseline과 followup 각각의 z_flipped 값 로드
+        data_followup, spacing, z_flipped_followup = await self.load_volume(case_id, "followup")
+        _, _, z_flipped_baseline = await self.load_volume(case_id, "baseline")
 
         # AI 확률맵 존재 여부
         ai_prob_path = self._get_ai_prob_filepath(case_id)
@@ -236,10 +271,12 @@ class NIfTIService:
 
         return CaseMeta(
             case_id=case_id,
-            shape=list(data.shape),
-            slices=data.shape[2],  # Z축
+            shape=list(data_followup.shape),
+            slices=data_followup.shape[2],  # Z축
             spacing=spacing,
-            ai_available=ai_available
+            ai_available=ai_available,
+            z_flipped_baseline=z_flipped_baseline,
+            z_flipped_followup=z_flipped_followup
         )
 
     # =========================================================================
@@ -298,12 +335,15 @@ class NIfTIService:
         Args:
             case_id: 케이스 ID
             series: "baseline" | "followup"
-            z: Z 슬라이스 인덱스
+            z: Z 슬라이스 인덱스 (논리적 인덱스, z_flipped 자동 적용)
             wl: Window/Level 프리셋 ("liver" | "soft")
             format: "png" (무손실, 권장) 또는 "jpeg" (손실)
 
         Returns:
             (이미지 bytes, media_type) 튜플
+
+        Note:
+            z_flipped인 경우 내부적으로 인덱스 반전하여 처리
         """
         # 캐시 키에 format 포함
         cache_key = f"{format}"
@@ -313,75 +353,25 @@ class NIfTIService:
             return cached, media_type
 
         # 볼륨 로드
-        volume, _ = await self.load_volume(case_id, series)
+        volume, _, z_flipped = await self.load_volume(case_id, series)
 
         # Z 인덱스 검증
         if z < 0 or z >= volume.shape[2]:
             raise ValueError(f"Invalid slice index: {z} (max: {volume.shape[2] - 1})")
 
+        # z_flipped인 경우 실제 슬라이스 인덱스 반전
+        actual_z = (volume.shape[2] - 1 - z) if z_flipped else z
+
         # 슬라이스 추출 및 렌더링
-        slice_data = volume[:, :, z].T  # Transpose for proper orientation
+        slice_data = volume[:, :, actual_z].T  # Transpose for proper orientation
         windowed = self._apply_window_level(slice_data, wl)
         image_bytes = self._to_image(windowed, format)
 
-        # 캐시 저장
+        # 캐시 저장 (논리적 인덱스 z로 저장)
         set_cached_slice(case_id, series, z, f"{wl}_{format}", image_bytes)
 
         media_type = "image/png" if format == "png" else "image/jpeg"
         return image_bytes, media_type
-
-    # =========================================================================
-    # AI 오버레이 렌더링
-    # =========================================================================
-
-    async def render_overlay(
-        self,
-        case_id: str,
-        z: int,
-        threshold: float = 0.30,  # API 호환성 유지 (더 이상 사용하지 않음)
-        alpha: float = 0.4
-    ) -> Optional[bytes]:
-        """
-        AI segmentation label 오버레이 렌더링
-
-        Args:
-            case_id: 케이스 ID
-            z: Z 슬라이스 인덱스
-            threshold: (미사용, API 호환성 유지)
-            alpha: 오버레이 투명도 (기본 0.4)
-
-        Returns:
-            PNG bytes (투명도 포함) 또는 None (AI 없음)
-
-        Note:
-            label == 2 (metastasis)인 영역만 빨간색으로 표시
-        """
-        ai_label = await self.load_ai_prob(case_id)
-        if ai_label is None:
-            return None
-
-        if z < 0 or z >= ai_label.shape[2]:
-            raise ValueError(f"Invalid slice index: {z}")
-
-        # Label 슬라이스 추출
-        label_slice = ai_label[:, :, z].T
-        label_slice = np.flipud(label_slice)  # Y축 반전 (NiiVue 좌표계 맞춤)
-
-        # label == 2 (metastasis)인 영역만 마스킹
-        mask = label_slice == 2
-
-        # RGBA 이미지 생성 (빨간색 오버레이)
-        h, w = label_slice.shape
-        overlay = np.zeros((h, w, 4), dtype=np.uint8)
-        overlay[mask, 0] = 255  # Red
-        overlay[mask, 3] = int(alpha * 255)  # Alpha
-
-        # PNG로 변환 (투명도 유지)
-        img = Image.fromarray(overlay, mode="RGBA")
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-
-        return buffer.getvalue()
 
 
 # 싱글톤 인스턴스

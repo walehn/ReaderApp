@@ -220,18 +220,18 @@ export default function DashboardPage() {
 
       {/* 헤더 */}
       <header className="relative z-10 border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+        <div className="max-w-7xl mx-auto px-dynamic-lg py-dynamic">
           <div className="flex items-center justify-between">
             {/* 로고 및 제목 */}
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 flex items-center justify-center shadow-lg shadow-blue-500/25 animate-pulse-glow">
-                <SessionIcon className="w-7 h-7 text-white" />
+            <div className="flex items-center gap-dynamic">
+              <div className="w-dynamic-icon-lg h-dynamic-icon-lg rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 flex items-center justify-center shadow-lg shadow-blue-500/25 animate-pulse-glow">
+                <SessionIcon className="w-[60%] h-[60%] text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">
+                <h1 className="text-dynamic-title font-bold text-white tracking-tight">
                   {studyConfig?.study_name || 'Reader Study'}
                 </h1>
-                <p className="text-sm text-gray-500">Dashboard</p>
+                <p className="text-dynamic-xs text-gray-500">Dashboard</p>
               </div>
             </div>
 
@@ -279,23 +279,23 @@ export default function DashboardPage() {
       </header>
 
       {/* 메인 콘텐츠 */}
-      <main className="relative z-10 max-w-7xl mx-auto px-6 py-8">
+      <main className="relative z-10 max-w-7xl mx-auto px-dynamic-lg py-dynamic-lg">
         {/* 환영 섹션 + 통계 */}
-        <div className="mb-10 animate-fade-in-up">
-          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+        <div className="mb-dynamic-lg animate-fade-in-up">
+          <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-dynamic-lg">
             {/* 환영 메시지 */}
             <div>
-              <h2 className="text-3xl font-bold text-white mb-2">
+              <h2 className="text-dynamic-title font-bold text-white mb-dynamic">
                 안녕하세요, <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">{user?.name}</span>님
               </h2>
-              <p className="text-gray-400">
+              <p className="text-gray-400 text-dynamic-body">
                 아래에서 세션을 선택하여 Reader Study를 진행하세요.
               </p>
             </div>
 
             {/* 진행 통계 */}
             {!loading && sessions.length > 0 && (
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-dynamic-lg">
                 {/* 전체 진행률 */}
                 <div className="text-center">
                   <div className="relative w-20 h-20">
@@ -330,7 +330,7 @@ export default function DashboardPage() {
                 </div>
 
                 {/* 상태별 개수 */}
-                <div className="flex gap-4">
+                <div className="flex gap-dynamic">
                   <div className="text-center px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
                     <p className="text-2xl font-bold text-emerald-400">{stats.completed}</p>
                     <p className="text-xs text-gray-500">완료</p>
@@ -394,7 +394,7 @@ export default function DashboardPage() {
 
         {/* 세션 목록 */}
         {!loading && !error && sessions.length > 0 && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-dynamic-lg">
             {sessions.map((session, index) => {
               const statusConfig = getStatusConfig(session.status)
 
@@ -405,9 +405,9 @@ export default function DashboardPage() {
                   style={{ animationDelay: `${index * 100}ms`, opacity: 0 }}
                 >
                   {/* 세션 헤더 */}
-                  <div className="p-6">
-                    <div className="flex items-start justify-between mb-5">
-                      <div className="flex items-center gap-4">
+                  <div className="p-dynamic-lg">
+                    <div className="flex items-start justify-between mb-dynamic">
+                      <div className="flex items-center gap-dynamic">
                         {/* 세션 아이콘 */}
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
                           session.status === 'completed'
@@ -425,15 +425,15 @@ export default function DashboardPage() {
                           }`} />
                         </div>
                         <div>
-                          <h3 className="text-xl font-bold text-white">
+                          <h3 className="text-dynamic-subtitle font-bold text-white">
                             {session.session_code}
                           </h3>
-                          <div className="flex items-center gap-3 mt-1">
+                          <div className="flex items-center gap-dynamic mt-1">
                             <span className={`status-badge ${statusConfig.class}`}>
                               {statusConfig.icon}
                               {statusConfig.label}
                             </span>
-                            <span className="flex items-center gap-1 text-sm text-gray-500">
+                            <span className="flex items-center gap-1 text-dynamic-sm text-gray-500">
                               <CaseIcon className="w-4 h-4" />
                               {session.total_cases}개 케이스
                             </span>
@@ -443,15 +443,15 @@ export default function DashboardPage() {
 
                       {/* 진행률 */}
                       <div className="text-right">
-                        <div className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">
+                        <div className="text-dynamic-title font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">
                           {session.progress_percent.toFixed(0)}%
                         </div>
-                        <div className="text-xs text-gray-500">진행률</div>
+                        <div className="text-dynamic-xs text-gray-500">진행률</div>
                       </div>
                     </div>
 
                     {/* 진행 바 */}
-                    <div className="w-full bg-white/5 rounded-full h-2 mb-5 overflow-hidden">
+                    <div className="w-full bg-white/5 rounded-full h-2 mb-dynamic overflow-hidden">
                       <div
                         className={`h-2 rounded-full transition-all duration-500 ${
                           session.status === 'completed'
@@ -463,7 +463,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* Block 정보 */}
-                    <div className="grid grid-cols-2 gap-4 mb-5">
+                    <div className="grid grid-cols-2 gap-dynamic mb-dynamic">
                       {/* Block A */}
                       <div className={`rounded-xl p-4 ${
                         session.block_a_mode === 'AIDED' ? 'mode-aided' : 'mode-unaided'
@@ -550,18 +550,18 @@ export default function DashboardPage() {
         )}
 
         {/* 안내사항 */}
-        <div className="mt-10 glass-card rounded-2xl p-6 animate-fade-in-up" style={{ animationDelay: '400ms', opacity: 0 }}>
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="mt-dynamic-lg glass-card rounded-2xl p-dynamic-lg animate-fade-in-up" style={{ animationDelay: '400ms', opacity: 0 }}>
+          <div className="flex items-center gap-dynamic mb-dynamic-lg">
+            <div className="w-dynamic-icon-md h-dynamic-icon-md rounded-xl bg-blue-500/20 flex items-center justify-center">
+              <svg className="w-[60%] h-[60%] text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                   d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-white">안내사항</h3>
+            <h3 className="text-dynamic-subtitle font-semibold text-white">안내사항</h3>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-dynamic-lg text-dynamic-sm">
             {/* 세션 구조 */}
             <div className="space-y-3">
               <h4 className="text-white font-medium flex items-center gap-2">
@@ -571,6 +571,7 @@ export default function DashboardPage() {
               <ul className="space-y-2 text-gray-400 ml-8">
                 <li>• 각 세션은 <span className="text-blue-400 font-medium">Block A</span>와 <span className="text-blue-400 font-medium">Block B</span>로 구성되며, 순차적으로 진행됩니다.</li>
                 <li>• 각 블록은 <span className="text-amber-400 font-medium">UNAIDED</span>(비보조) 또는 <span className="text-emerald-400 font-medium">AIDED</span>(AI 보조) 모드로 진행됩니다.</li>
+                <li>• 세션과 세션 사이에는 <span className="text-purple-400 font-medium">3주간의 Washout 기간</span>이 있습니다.</li>
               </ul>
             </div>
 
@@ -611,6 +612,7 @@ export default function DashboardPage() {
               </h4>
               <ul className="space-y-2 text-gray-400 ml-8">
                 <li>• <span className="text-emerald-400 font-medium">AIDED 모드</span>에서는 AI 예측 오버레이가 표시됩니다.</li>
+                <li>• AI 오버레이: <span className="text-green-400 font-medium">간 mask</span>는 <span className="text-green-400">녹색</span>, <span className="text-red-400 font-medium">전이 병변</span>은 <span className="text-red-400">빨간색</span>으로 표시됩니다.</li>
                 <li>• AI 결과는 <span className="text-amber-400">참고용</span>이며, 최종 판단은 리더의 소견을 따릅니다.</li>
                 <li>• 세션 진행 중 브라우저를 닫아도 진행 상태가 <span className="text-emerald-400">자동 저장</span>됩니다.</li>
                 <li>• 완료된 세션은 다시 진행할 수 없습니다. 필요시 관리자에게 문의하세요.</li>
@@ -619,11 +621,14 @@ export default function DashboardPage() {
           </div>
 
           {/* 주의사항 */}
-          <div className="mt-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/20">
-            <div className="flex items-start gap-3">
-              <span className="text-amber-400 text-lg">⚠️</span>
-              <div className="text-gray-300 text-sm">
-                <span className="text-amber-400 font-medium">주의사항</span>: 각 케이스 판독에 충분한 시간을 가지고 신중하게 판단해주세요. 판독 소요 시간이 기록됩니다.
+          <div className="mt-dynamic-lg p-dynamic rounded-xl bg-amber-500/10 border border-amber-500/20">
+            <div className="flex items-start gap-dynamic">
+              <span className="text-amber-400 text-dynamic-subtitle">⚠️</span>
+              <div className="text-gray-300 text-dynamic-sm space-y-1">
+                <p><span className="text-amber-400 font-medium">주의사항</span>: 각 케이스 판독에 충분한 시간을 가지고 신중하게 판단해주세요.</p>
+                <p>• 판독 소요 시간이 기록됩니다.</p>
+                <p>• <span className="text-purple-400">5분간 입력이 없거나 탭을 전환</span>하면 타이머가 자동 일시정지됩니다.</p>
+                <p>• 활동 재개 시 타이머가 자동으로 다시 시작됩니다.</p>
               </div>
             </div>
           </div>

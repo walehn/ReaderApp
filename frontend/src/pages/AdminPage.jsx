@@ -551,6 +551,21 @@ export default function AdminPage() {
     }
   }
 
+  // 리더 그룹 변경
+  const handleChangeReaderGroup = async (readerId, newGroup) => {
+    try {
+      setLoading(true)
+      setError(null)
+      await adminApi.updateReader(getToken(), readerId, { group: newGroup })
+      setSuccessMessage(`그룹이 변경되었습니다`)
+      loadReaders()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handleLogout = async () => {
     await logout()
     navigate('/', { replace: true })
@@ -1290,10 +1305,22 @@ export default function AdminPage() {
                         <td className="px-4 py-4 text-white font-mono text-sm">{reader.reader_code}</td>
                         <td className="px-4 py-4 text-white">{reader.name}</td>
                         <td className="px-4 py-4 text-gray-400 text-sm">{reader.email}</td>
-                        <td className="px-4 py-4 text-white">
-                          {reader.role === 'admin'
-                            ? <span className="text-gray-500">-</span>
-                            : (studyConfig?.group_names?.[`group_${reader.group}`] || `G${reader.group || '-'}`)}
+                        <td className="px-4 py-4">
+                          {reader.role === 'admin' ? (
+                            <span className="text-gray-500">-</span>
+                          ) : (
+                            <select
+                              value={reader.group || ''}
+                              onChange={(e) => handleChangeReaderGroup(reader.id, parseInt(e.target.value))}
+                              className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm focus:outline-none focus:border-blue-500/50 cursor-pointer hover:bg-white/10 transition-colors"
+                            >
+                              {Array.from({ length: studyConfig?.total_groups || 2 }, (_, i) => i + 1).map(groupNum => (
+                                <option key={groupNum} value={groupNum} className="bg-gray-800 text-white">
+                                  {studyConfig?.group_names?.[`group_${groupNum}`] || `Group ${groupNum}`}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-white">
                           {reader.role === 'admin' ? <span className="text-gray-500">-</span> : `${reader.session_count}개`}

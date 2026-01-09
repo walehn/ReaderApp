@@ -39,6 +39,14 @@ class CaseMeta(BaseModel):
     slices: int = Field(..., description="Z축 슬라이스 수")
     spacing: list[float] = Field(..., description="복셀 간격 [x, y, z] mm")
     ai_available: bool = Field(default=False, description="AI 확률맵 존재 여부")
+    z_flipped_baseline: bool = Field(
+        default=False,
+        description="Baseline Z축 반전 필요 여부"
+    )
+    z_flipped_followup: bool = Field(
+        default=False,
+        description="Followup Z축 반전 필요 여부"
+    )
 
 
 # =============================================================================

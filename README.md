@@ -38,7 +38,7 @@
 │   │   ├── config.py            # 전역 설정 관리
 │   │   ├── routers/
 │   │   │   ├── case.py          # GET /case/meta
-│   │   │   ├── render.py        # GET /render/slice, /render/overlay
+│   │   │   ├── render.py        # GET /render/slice
 │   │   │   ├── study.py         # POST /study/submit, GET /study/session
 │   │   │   └── admin.py         # GET /admin/export
 │   │   ├── models/
@@ -165,7 +165,7 @@ npm run dev
 | 엔드포인트 | 메서드 | 설명 |
 |-----------|--------|------|
 | `/render/slice` | GET | PNG 슬라이스 이미지 |
-| `/render/overlay` | GET | AI 확률맵 오버레이 (AIDED 전용) |
+| `/nifti/overlay` | GET | AI 오버레이 NIfTI (AIDED 전용, NiiVue용) |
 
 **슬라이스 파라미터**:
 - `case_id`: 케이스 ID

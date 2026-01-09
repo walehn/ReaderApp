@@ -26,7 +26,7 @@ SQLite Database Models - Reader Study MVP
 ============================================================================
 """
 
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey, Text, UniqueConstraint, event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime, timezone
@@ -55,6 +55,23 @@ DATABASE_URL = f"sqlite+aiosqlite:///{RESULTS_DIR}/reader_study.db"
 # 엔진 및 세션 설정
 engine = create_async_engine(DATABASE_URL, echo=False)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+# =============================================================================
+# WAL 모드 활성화 (동시 읽기/쓰기 성능 향상)
+# =============================================================================
+# WAL (Write-Ahead Logging) 모드:
+#   - 읽기와 쓰기가 서로 블로킹하지 않음
+#   - 동시 접속 환경에서 2-3배 성능 향상
+#   - 추가 파일 생성: .db-wal, .db-shm (정상)
+@event.listens_for(engine.sync_engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """SQLite 연결 시 WAL 모드 및 성능 최적화 설정"""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")  # 성능과 안전성 균형
+    cursor.execute("PRAGMA busy_timeout=5000")   # 락 대기 시간 5초
+    cursor.close()
 
 # ORM 베이스
 Base = declarative_base()

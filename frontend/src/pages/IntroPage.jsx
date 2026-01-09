@@ -291,7 +291,7 @@ export default function IntroPage() {
             Created by Hokun Kim · Powered by Claude Code
           </p>
           <p className="text-gray-600 text-dynamic-xs mt-1">
-            Last updated: January 8, 2026
+            Last updated: January 9, 2026
           </p>
         </footer>
       </div>

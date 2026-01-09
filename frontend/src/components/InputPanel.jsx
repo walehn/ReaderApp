@@ -74,6 +74,13 @@ const TrashIcon = ({ className = "w-4 h-4" }) => (
   </svg>
 )
 
+const PauseIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </svg>
+)
+
 export function InputPanel({
   patientDecision,
   onDecisionChange,
@@ -82,9 +89,15 @@ export function InputPanel({
   onClearLesions,
   isSubmitting = false,
   timeElapsed = '0:00',
+  isPaused = false,
+  pauseReason = null,
 }) {
-  const canSubmit = patientDecision !== null && !isSubmitting
-  const showLesionWarning = patientDecision === true && lesionCount === 0
+  // 불일치 검증: 판정과 병변 마킹 상태가 일치해야 함
+  const yesWithoutLesion = patientDecision === true && lesionCount === 0
+  const noWithLesion = patientDecision === false && lesionCount > 0
+
+  // 제출 가능 조건: 판정 선택 + 제출중 아님 + 불일치 없음
+  const canSubmit = patientDecision !== null && !isSubmitting && !yesWithoutLesion && !noWithLesion
 
   return (
     <div className="glass-card rounded-xl p-4 h-full flex flex-col">
@@ -94,9 +107,21 @@ export function InputPanel({
           <ClockIcon className="w-5 h-5" />
           <span className="text-sm">소요 시간</span>
         </div>
-        <span className="text-2xl font-bold text-white font-mono tabular-nums tracking-wider">
-          {timeElapsed}
-        </span>
+        <div className="flex items-center gap-2">
+          {isPaused && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/20 border border-amber-500/30 animate-pulse">
+              <PauseIcon className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs text-amber-400 font-medium">
+                {pauseReason === 'tab_hidden' ? '탭 비활성' : '대기 중'}
+              </span>
+            </div>
+          )}
+          <span className={`text-2xl font-bold font-mono tabular-nums tracking-wider ${
+            isPaused ? 'text-amber-400' : 'text-white'
+          }`}>
+            {timeElapsed}
+          </span>
+        </div>
       </div>
 
       {/* 환자 수준 판정 */}
@@ -141,15 +166,29 @@ export function InputPanel({
           </button>
         </div>
 
-        {/* 병변 마킹 경고 */}
-        {showLesionWarning && (
+        {/* "예" + 병변 없음 경고 */}
+        {yesWithoutLesion && (
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 mb-4 animate-fade-in-up">
+            <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+              <WarningIcon className="w-5 h-5 text-red-400" />
+            </div>
+            <div className="text-red-400 text-sm">
+              <p className="font-medium">"예"를 선택했지만 병변이 마킹되지 않았습니다</p>
+              <p className="text-red-400/70 text-xs mt-0.5">병변을 마킹하거나 판정을 변경해주세요</p>
+            </div>
+          </div>
+        )}
+
+        {/* "아니오" + 병변 있음 경고 */}
+        {noWithLesion && (
           <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4 animate-fade-in-up">
             <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
               <WarningIcon className="w-5 h-5 text-amber-400" />
             </div>
-            <p className="text-amber-400 text-sm">
-              "예"를 선택했지만 병변이 마킹되지 않았습니다
-            </p>
+            <div className="text-amber-400 text-sm">
+              <p className="font-medium">"아니오"를 선택했지만 병변이 마킹되어 있습니다</p>
+              <p className="text-amber-400/70 text-xs mt-0.5">병변을 삭제하거나 판정을 변경해주세요</p>
+            </div>
           </div>
         )}
 

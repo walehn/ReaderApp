@@ -27,6 +27,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useCase } from '../hooks/useCase'
 import { useTimer } from '../hooks/useTimer'
+import { useActivityDetector } from '../hooks/useActivityDetector'
 import { api, sessionsApi } from '../services/api'
 
 import Viewer from '../components/Viewer'
@@ -107,6 +108,11 @@ export default function ViewerPage() {
 
   // 타이머
   const timer = useTimer()
+
+  // 사용자 활동 감지 (5분 비활성 또는 탭 전환 시 타이머 일시정지)
+  const { isActive, isTabVisible } = useActivityDetector({
+    idleTimeout: 5 * 60 * 1000  // 5분
+  })
 
   // 환자 수준 판정
   const [patientDecision, setPatientDecision] = useState(null)
@@ -217,6 +223,21 @@ export default function ViewerPage() {
       timer.start()
     }
   }, [currentCase?.case_id])
+
+  // 활동 상태에 따른 타이머 자동 제어
+  useEffect(() => {
+    // 제출 중일 때는 타이머 제어 안함
+    if (isSubmitting) return
+
+    if (isActive && timer.pauseReason) {
+      // 활동 재개 → 타이머 재개
+      timer.resume()
+    } else if (timer.isRunning && !isActive) {
+      // 비활성 → 타이머 일시정지
+      const reason = !isTabVisible ? 'tab_hidden' : 'idle'
+      timer.pauseWithReason(reason)
+    }
+  }, [isActive, isTabVisible, timer.isRunning, timer.pauseReason, isSubmitting])
 
   // 결과 제출
   const handleSubmit = useCallback(async () => {
@@ -362,8 +383,8 @@ export default function ViewerPage() {
     <div className="min-h-screen bg-[#0a0a12] bg-mesh">
       <div className="fixed inset-0 bg-gradient-radial pointer-events-none" />
 
-      <div className="relative z-10 p-4 lg:p-6">
-        <div className="max-w-[1600px] mx-auto space-y-4">
+      <div className="relative z-10 p-dynamic lg:p-dynamic-lg">
+        <div className="max-w-[1600px] mx-auto space-y-dynamic">
           {/* 헤더 */}
           <header className="flex items-center justify-between animate-fade-in-up">
             <Link
@@ -374,7 +395,7 @@ export default function ViewerPage() {
               <span className="font-medium">대시보드</span>
             </Link>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-dynamic">
               {/* 모드 배지 */}
               <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${
                 isAided ? 'mode-aided' : 'mode-unaided'
@@ -410,15 +431,15 @@ export default function ViewerPage() {
 
           {/* 케이스 정보 */}
           <div className="text-center animate-fade-in-up" style={{ animationDelay: '150ms', opacity: 0 }}>
-            <div className="inline-flex items-center gap-3 px-6 py-3 glass-card rounded-2xl">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
-                <CaseIcon className="w-5 h-5 text-blue-400" />
+            <div className="inline-flex items-center gap-dynamic px-dynamic-lg py-dynamic glass-card rounded-2xl">
+              <div className="w-dynamic-icon-md h-dynamic-icon-md rounded-xl bg-blue-500/20 flex items-center justify-center">
+                <CaseIcon className="w-[60%] h-[60%] text-blue-400" />
               </div>
               <div className="text-left">
-                <h2 className="text-xl font-bold text-white">
+                <h2 className="text-dynamic-subtitle font-bold text-white">
                   Case {String((currentCase?.case_index ?? 0) + 1).padStart(3, '0')}
                 </h2>
-                <p className="text-xs text-gray-500">
+                <p className="text-dynamic-xs text-gray-500">
                   Block {currentCase?.block} • {(currentCase?.case_index ?? 0) + 1} / {currentCase?.total_cases_in_block ?? 0}
                   {currentCase?.is_last_in_block && (
                     <span className="ml-2 text-amber-400">(마지막)</span>
@@ -429,7 +450,7 @@ export default function ViewerPage() {
           </div>
 
           {/* 메인 레이아웃 */}
-          <div className="space-y-4 !mt-2 animate-fade-in-up" style={{ animationDelay: '200ms', opacity: 0 }}>
+          <div className="space-y-dynamic !mt-2 animate-fade-in-up" style={{ animationDelay: '200ms', opacity: 0 }}>
             {/* 뷰어 영역 */}
             <div className="w-full relative">
               {/* 로딩 오버레이 */}
@@ -476,11 +497,13 @@ export default function ViewerPage() {
                 customWL={caseData.customWL}
                 onWLChange={caseData.setCustomWL}
                 wlMode={caseData.wlMode}
+                zFlippedBaseline={caseData.zFlippedBaseline}
+                zFlippedFollowup={caseData.zFlippedFollowup}
               />
             </div>
 
             {/* 하단 컨트롤 영역 */}
-            <div className="flex flex-col lg:flex-row justify-center items-stretch gap-4">
+            <div className="flex flex-col lg:flex-row justify-center items-stretch gap-dynamic">
               {/* 병변 마커 */}
               <div className="w-full lg:w-auto lg:min-w-[360px]">
                 <LesionMarker
@@ -501,6 +524,8 @@ export default function ViewerPage() {
                   onClearLesions={caseData.clearLesions}
                   isSubmitting={isSubmitting}
                   timeElapsed={timer.formattedTime}
+                  isPaused={!!timer.pauseReason}
+                  pauseReason={timer.pauseReason}
                 />
               </div>
 

@@ -41,9 +41,10 @@ slice_cache: LRUCache[Tuple[str, str, int, str], bytes] = LRUCache(
     maxsize=settings.SLICE_CACHE_SIZE
 )
 
-# NIfTI 볼륨 캐시: (case_id, series) -> (numpy.ndarray, spacing)
+# NIfTI 볼륨 캐시: (case_id, series) -> (numpy.ndarray, spacing, z_flipped)
 # 평균 볼륨 크기 ~50MB, 10개 = ~500MB
-volume_cache: LRUCache[Tuple[str, str], Tuple[np.ndarray, List[float]]] = LRUCache(
+# z_flipped: Z축 방향 반전 필요 여부 (affine matrix 기반 감지)
+volume_cache: LRUCache[Tuple[str, str], Tuple[np.ndarray, List[float], bool]] = LRUCache(
     maxsize=settings.VOLUME_CACHE_SIZE
 )
 
@@ -73,18 +74,19 @@ def set_cached_slice(
 
 def get_cached_volume(
     case_id: str, series: str
-) -> Optional[Tuple[np.ndarray, List[float]]]:
-    """캐시된 볼륨/spacing 조회"""
+) -> Optional[Tuple[np.ndarray, List[float], bool]]:
+    """캐시된 볼륨/spacing/z_flipped 조회"""
     key = (case_id, series)
     return volume_cache.get(key)
 
 
 def set_cached_volume(
-    case_id: str, series: str, data: np.ndarray, spacing: List[float]
+    case_id: str, series: str, data: np.ndarray, spacing: List[float],
+    z_flipped: bool = False
 ) -> None:
-    """볼륨/spacing 캐시 저장"""
+    """볼륨/spacing/z_flipped 캐시 저장"""
     key = (case_id, series)
-    volume_cache[key] = (data, spacing)
+    volume_cache[key] = (data, spacing, z_flipped)
 
 
 def get_cached_ai_prob(case_id: str) -> Optional[np.ndarray]:

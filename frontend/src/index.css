@@ -347,6 +347,11 @@ canvas {
   gap: clamp(1.2rem, 1.6vh, 2.4rem);
 }
 
+/* 동적 space-y (자식 요소 간 간격) */
+.space-y-dynamic > :not([hidden]) ~ :not([hidden]) {
+  margin-top: clamp(0.8rem, 1.2vh, 1.6rem);
+}
+
 .p-dynamic {
   padding: clamp(1.2rem, 1.6vh, 2.4rem);
 }

@@ -9,8 +9,11 @@
  *   - 우: Followup 이미지 (병변 마킹 가능)
  *   - 동기화된 Z-slice 스크롤
  *   - Window/Level 프리셋 토글
- *   - AI 오버레이 (AIDED 모드)
- *   - 하이브리드 렌더링: WebGL(NiiVue) 또는 서버 사이드(PNG) 자동 선택
+ *   - AI 오버레이 (AIDED 모드, NiiVue에서 직접 렌더링)
+ *
+ * 렌더링:
+ *   - NiiVue (WebGL) 기반 클라이언트 사이드 렌더링
+ *   - AI 오버레이: Liver mask(녹색) + Metastasis(빨간색)
  *
  * 디자인:
  *   - 글래스모피즘 카드
@@ -27,31 +30,13 @@
  * ============================================================================
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
-import SliceCanvas from './SliceCanvas'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import NiiVueCanvas from './NiiVueCanvas'
 import { api } from '../services/api'
-import { checkNiiVueSupport } from '../utils/webgl'
 
 // =============================================================================
 // 아이콘 컴포넌트
 // =============================================================================
-
-const GpuIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <rect x="2" y="6" width="20" height="12" rx="2" />
-    <path d="M6 10v4M10 10v4M14 10v4M18 10v4" strokeLinecap="round" />
-  </svg>
-)
-
-const ServerIcon = ({ className = "w-4 h-4" }) => (
-  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-    <rect x="2" y="3" width="20" height="6" rx="1" />
-    <rect x="2" y="15" width="20" height="6" rx="1" />
-    <circle cx="6" cy="6" r="1" fill="currentColor" />
-    <circle cx="6" cy="18" r="1" fill="currentColor" />
-  </svg>
-)
 
 const SyncIcon = ({ className = "w-4 h-4" }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -109,6 +94,9 @@ export function Viewer({
   customWL = { center: 40, width: 400 },
   onWLChange,
   wlMode = 'preset',
+  // Z축 방향 반전 (affine matrix 기반 자동 감지, baseline/followup 각각)
+  zFlippedBaseline = false,
+  zFlippedFollowup = false,
 }) {
   // AIDED 모드일 때 AI Overlay 기본 ON
   const [showOverlay, setShowOverlay] = useState(isAided)
@@ -175,30 +163,6 @@ export function Viewer({
     lastFollowupRef.current = 0
   }, [caseId])
 
-  // WebGL/NiiVue 지원 여부 확인
-  const webglSupport = useMemo(() => checkNiiVueSupport(), [])
-  const useWebGL = webglSupport.supported
-
-  // 서버 렌더링용 슬라이스 URL
-  const baselineUrl = caseId
-    ? api.getSliceUrl(caseId, 'baseline', currentSlice, wlPreset)
-    : null
-  const followupUrl = caseId
-    ? api.getSliceUrl(caseId, 'followup', currentSlice, wlPreset)
-    : null
-
-  // 오버레이 URL
-  const overlayUrl = (caseId && isAided && aiAvailable)
-    ? api.getOverlayUrl(caseId, currentSlice, readerId, sessionId, aiThreshold)
-    : null
-
-  // 마우스 휠로 슬라이스 변경
-  const handleWheel = useCallback((delta) => {
-    if (!onSliceChange || totalSlices === 0) return
-    const newSlice = currentSlice + (delta > 0 ? -1 : 1)
-    onSliceChange(Math.max(0, Math.min(newSlice, totalSlices - 1)))
-  }, [currentSlice, totalSlices, onSliceChange])
-
   // Baseline 슬라이스 변경 핸들러
   // ★ delta 기반 동기화: 각자 위치 유지, 변경량만 동시 적용
   const handleBaselineSliceChange = useCallback((newSlice) => {
@@ -237,13 +201,6 @@ export function Viewer({
     }
   }, [onAddLesion])
 
-  // 서버 렌더링용 병변 추가 핸들러
-  const handleServerAddLesion = useCallback((x, y) => {
-    if (onAddLesion) {
-      onAddLesion(x, y, currentSlice)
-    }
-  }, [onAddLesion, currentSlice])
-
   if (!caseId) {
     return (
       <div className="flex items-center justify-center h-96 glass-card rounded-2xl">
@@ -254,67 +211,27 @@ export function Viewer({
 
   return (
     <div className="space-y-4">
-      {/* 렌더링 모드 표시 */}
-      <div className="flex items-center gap-2 text-xs">
-        <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${
-          useWebGL
-            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-        }`}>
-          {useWebGL ? (
-            <>
-              <GpuIcon className="w-3.5 h-3.5" />
-              <span className="font-medium">WebGL (NiiVue)</span>
-            </>
-          ) : (
-            <>
-              <ServerIcon className="w-3.5 h-3.5" />
-              <span className="font-medium">Server (PNG)</span>
-            </>
-          )}
-        </div>
-        {!webglSupport.supported && (
-          <span className="text-gray-500">WebGL2 미지원</span>
-        )}
-        {webglSupport.supported && !webglSupport.optimal && (
-          <span className="text-gray-500">최적화 제한</span>
-        )}
-      </div>
-
       {/* 2-up 뷰어 */}
       <div className="grid grid-cols-2 gap-4">
         {/* Baseline (좌) */}
         <div className="space-y-3">
           <div className="glass-card rounded-xl overflow-hidden">
-            {useWebGL ? (
-              <NiiVueCanvas
-                key="niivue-baseline"
-                caseId={caseId}
-                series="baseline"
-                currentSlice={baselineSlice}
-                onSliceChange={handleBaselineSliceChange}
-                wlPreset={wlPreset}
-                customWL={customWL}
-                wlMode={wlMode}
-                lesions={[]}
-                isInteractive={false}
-                wlDragEnabled={wlDragEnabled}
-                onWLChange={onWLChange}
-                label="Baseline"
-              />
-            ) : (
-              <SliceCanvas
-                imageUrl={baselineUrl}
-                lesions={[]}
-                currentSlice={baselineSlice}
-                onWheel={handleWheel}
-                isInteractive={false}
-                wlDragEnabled={wlDragEnabled}
-                onWLChange={onWLChange}
-                customWL={customWL}
-                label="Baseline"
-              />
-            )}
+            <NiiVueCanvas
+              key="niivue-baseline"
+              caseId={caseId}
+              series="baseline"
+              currentSlice={baselineSlice}
+              onSliceChange={handleBaselineSliceChange}
+              wlPreset={wlPreset}
+              customWL={customWL}
+              wlMode={wlMode}
+              lesions={[]}
+              isInteractive={false}
+              wlDragEnabled={wlDragEnabled}
+              onWLChange={onWLChange}
+              label="Baseline"
+              zFlipped={zFlippedBaseline}
+            />
           </div>
           {/* Baseline 슬라이더 */}
           <div className="flex items-center gap-3 px-2">
@@ -342,42 +259,27 @@ export function Viewer({
         {/* Followup (우) */}
         <div className="space-y-3">
           <div className="glass-card rounded-xl overflow-hidden">
-            {useWebGL ? (
-              <NiiVueCanvas
-                key="niivue-followup"
-                caseId={caseId}
-                series="followup"
-                currentSlice={followupSlice}
-                onSliceChange={handleFollowupSliceChange}
-                wlPreset={wlPreset}
-                customWL={customWL}
-                wlMode={wlMode}
-                lesions={lesions}
-                onAddLesion={handleNiiVueAddLesion}
-                isInteractive={true}
-                wlDragEnabled={wlDragEnabled}
-                onWLChange={onWLChange}
-                label="Follow-up"
-                overlayUrl={overlayUrl}
-                showOverlay={showOverlay && isAided}
-                aiThreshold={aiThreshold}
-              />
-            ) : (
-              <SliceCanvas
-                imageUrl={followupUrl}
-                overlayUrl={overlayUrl}
-                showOverlay={showOverlay && isAided}
-                lesions={lesions}
-                currentSlice={followupSlice}
-                onAddLesion={handleServerAddLesion}
-                onWheel={handleWheel}
-                isInteractive={true}
-                wlDragEnabled={wlDragEnabled}
-                onWLChange={onWLChange}
-                customWL={customWL}
-                label="Follow-up"
-              />
-            )}
+            <NiiVueCanvas
+              key="niivue-followup"
+              caseId={caseId}
+              series="followup"
+              currentSlice={followupSlice}
+              onSliceChange={handleFollowupSliceChange}
+              wlPreset={wlPreset}
+              customWL={customWL}
+              wlMode={wlMode}
+              lesions={lesions}
+              onAddLesion={handleNiiVueAddLesion}
+              isInteractive={true}
+              wlDragEnabled={wlDragEnabled}
+              onWLChange={onWLChange}
+              label="Follow-up"
+              readerId={readerId}
+              sessionId={sessionId}
+              showOverlay={showOverlay && isAided && aiAvailable}
+              aiThreshold={aiThreshold}
+              zFlipped={zFlippedFollowup}
+            />
           </div>
           {/* Followup 슬라이더 */}
           <div className="flex items-center gap-3 px-2">

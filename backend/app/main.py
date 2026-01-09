@@ -28,7 +28,7 @@ API 엔드포인트:
   케이스/렌더링:
   - GET  /case/meta          케이스 메타데이터
   - GET  /render/slice       슬라이스 이미지
-  - GET  /render/overlay     AI 오버레이 (AIDED only)
+  - GET  /nifti/overlay      AI 오버레이 NIfTI (AIDED only, NiiVue용)
 
   스터디 (레거시):
   - POST /study/submit       결과 제출

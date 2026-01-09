@@ -83,28 +83,6 @@ export const api = {
   },
 
   /**
-   * AI 오버레이 URL 생성 (AIDED 모드 전용)
-   * @param {string} caseId - 케이스 ID
-   * @param {number} z - 슬라이스 인덱스
-   * @param {string} readerId - Reader ID
-   * @param {string} sessionId - Session ID
-   * @param {number} threshold - 확률 임계값 (기본 0.30)
-   * @param {number} alpha - 투명도 (기본 0.4)
-   * @returns {string} - 오버레이 URL
-   */
-  getOverlayUrl: (caseId, z, readerId, sessionId, threshold = 0.30, alpha = 0.4) => {
-    const params = new URLSearchParams({
-      case_id: caseId,
-      z: z.toString(),
-      threshold: threshold.toString(),
-      alpha: alpha.toString(),
-      reader_id: readerId,
-      session_id: sessionId,
-    })
-    return `${API_BASE}/render/overlay?${params}`
-  },
-
-  /**
    * 결과 제출
    * @param {Object} data - 제출 데이터
    * @returns {Promise<{success, message, result_id}>}

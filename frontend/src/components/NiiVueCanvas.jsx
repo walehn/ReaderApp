@@ -10,6 +10,7 @@
  *   - Window/Level 프리셋 적용
  *   - 병변 마커 오버레이 렌더링
  *   - 클릭으로 병변 추가 (복셀 좌표)
+ *   - AI 오버레이 (NIfTI 직접 로드, Liver=녹색, Metastasis=빨간색)
  *   - 2-up 동기화 지원
  *
  * Props:
@@ -22,6 +23,9 @@
  *   - onAddLesion: 병변 추가 콜백 (복셀 좌표)
  *   - isInteractive: 클릭 상호작용 여부
  *   - label: 캔버스 라벨 ('Baseline' | 'Follow-up')
+ *   - readerId: Reader ID (AI 오버레이용)
+ *   - sessionId: Session ID (AI 오버레이용)
+ *   - showOverlay: AI 오버레이 표시 여부
  *
  * 사용 예시:
  *   <NiiVueCanvas
@@ -34,6 +38,9 @@
  *     onAddLesion={handleAddLesion}
  *     isInteractive={true}
  *     label="Follow-up"
+ *     readerId="R01"
+ *     sessionId="S1"
+ *     showOverlay={true}
  *   />
  * ============================================================================
  */
@@ -87,18 +94,24 @@ export function NiiVueCanvas({
   onAddLesion,
   isInteractive = false,
   label = '',
-  overlayUrl = null,
+  // AI 오버레이 관련 (NIfTI 직접 로드)
+  readerId = null,
+  sessionId = null,
   showOverlay = false,
   aiThreshold = 0.30,
   // W/L 드래그 관련
   wlDragEnabled = false,
-  onWLChange
+  onWLChange,
+  // Z축 방향 반전 (affine matrix 기반 자동 감지)
+  zFlipped = false
 }) {
   const canvasRef = useRef(null)
   const nvRef = useRef(null)
   const overlayCanvasRef = useRef(null)
   const onSliceChangeRef = useRef(onSliceChange)  // 최신 콜백 참조용
   const lastSliceRef = useRef(null)  // 중복 호출 방지용
+  const zFlippedRef = useRef(zFlipped)  // Z축 반전 상태 (콜백에서 사용)
+  const maxSliceRef = useRef(0)  // 최대 슬라이스 (콜백에서 사용)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [volumeLoaded, setVolumeLoaded] = useState(false)
@@ -115,6 +128,11 @@ export function NiiVueCanvas({
     onSliceChangeRef.current = onSliceChange
   }, [onSliceChange])
 
+  // zFlipped 변경 시 ref 업데이트 (onLocationChange 콜백에서 사용)
+  useEffect(() => {
+    zFlippedRef.current = zFlipped
+  }, [zFlipped])
+
   // NIfTI 볼륨 URL 생성
   const volumeUrl = useMemo(() => {
     if (!caseId || !series) return null
@@ -123,19 +141,9 @@ export function NiiVueCanvas({
 
   // AI Overlay NIfTI URL 생성 (NiiVue 직접 로드용)
   const aiOverlayNiftiUrl = useMemo(() => {
-    if (!caseId || !showOverlay) return null
-    // overlayUrl에서 reader_id와 session_id 추출 (props로 받은 overlayUrl 파싱)
-    if (!overlayUrl) return null
-    try {
-      const url = new URL(overlayUrl, window.location.origin)
-      const readerId = url.searchParams.get('reader_id')
-      const sessionId = url.searchParams.get('session_id')
-      if (!readerId || !sessionId) return null
-      return `${API_BASE}/nifti/overlay?case_id=${caseId}&reader_id=${readerId}&session_id=${sessionId}`
-    } catch {
-      return null
-    }
-  }, [caseId, showOverlay, overlayUrl])
+    if (!caseId || !showOverlay || !readerId || !sessionId) return null
+    return `${API_BASE}/nifti/overlay?case_id=${caseId}&reader_id=${readerId}&session_id=${sessionId}`
+  }, [caseId, showOverlay, readerId, sessionId])
 
   // =========================================================================
   // useEffect 1: NiiVue 인스턴스 생성 (컴포넌트 마운트 시 1회만)
@@ -170,15 +178,22 @@ export function NiiVueCanvas({
         // 슬라이스 변경 콜백 설정 (ref를 통해 항상 최신 함수 호출)
         // ★ 중복 호출 방지: NiiVue가 한 번의 휠에 여러 번 호출할 수 있으므로
         //    같은 슬라이스 값이면 무시하여 delta 기반 동기화 버그 방지
+        // ★ Z축 반전: zFlipped면 NiiVue 슬라이스를 논리적 슬라이스로 역변환
         nv.onLocationChange = (data) => {
           if (data && data.vox && onSliceChangeRef.current) {
-            const slice = Math.round(data.vox[2])
+            const rawSlice = Math.round(data.vox[2])
+
+            // Z축 반전: NiiVue는 원본 인덱스 → 논리적 인덱스로 변환
+            const maxS = maxSliceRef.current
+            const logicalSlice = zFlippedRef.current && maxS > 0
+              ? maxS - rawSlice
+              : rawSlice
 
             // 같은 슬라이스 값이면 콜백 호출 안 함 (중복 방지)
-            if (lastSliceRef.current === slice) return
-            lastSliceRef.current = slice
+            if (lastSliceRef.current === logicalSlice) return
+            lastSliceRef.current = logicalSlice
 
-            onSliceChangeRef.current(slice)
+            onSliceChangeRef.current(logicalSlice)
           }
         }
       } catch (err) {
@@ -260,7 +275,9 @@ export function NiiVueCanvas({
         if (nv.volumes && nv.volumes.length > 0) {
           const vol = nv.volumes[0]
           const numSlices = vol.dims[3]
-          setMaxSlice(numSlices - 1)
+          const newMaxSlice = numSlices - 1
+          setMaxSlice(newMaxSlice)
+          maxSliceRef.current = newMaxSlice  // ref도 업데이트 (콜백에서 사용)
 
           // Window/Level 적용
           const preset = WL_PRESETS[wlPreset]
@@ -273,8 +290,12 @@ export function NiiVueCanvas({
 
           // 초기 슬라이스 설정 (항상 첫 번째 슬라이스로 시작)
           // crosshairPos[2]는 0~1 사이 비율 (0 = 첫 슬라이스, 1 = 마지막 슬라이스)
+          // ★ Z축 반전: 논리적 슬라이스 → NiiVue 원본 인덱스로 변환
           if (numSlices > 1) {
-            nv.scene.crosshairPos[2] = currentSlice / (numSlices - 1)
+            const nvSlice = zFlippedRef.current
+              ? newMaxSlice - currentSlice  // 반전: 논리적 0 → NiiVue maxSlice
+              : currentSlice
+            nv.scene.crosshairPos[2] = nvSlice / newMaxSlice
             nv.drawScene()
           }
         }
@@ -313,25 +334,40 @@ export function NiiVueCanvas({
   }, [wlPreset, customWL, wlMode, volumeLoaded])
 
   // 외부에서 슬라이스 변경 시 동기화
+  // ★ Z축 반전: 논리적 슬라이스 → NiiVue 원본 인덱스로 변환
   useEffect(() => {
     const nv = nvRef.current
     if (!nv || !volumeLoaded || maxSlice === 0) return
 
+    // 논리적 슬라이스를 NiiVue 원본 인덱스로 변환
+    const targetNvSlice = zFlipped
+      ? maxSlice - currentSlice  // 반전: 논리적 0 → NiiVue maxSlice
+      : currentSlice
+
     // 현재 NiiVue 슬라이스와 다를 때만 업데이트
     const currentNvSlice = Math.round(nv.scene.crosshairPos[2] * maxSlice)
-    if (currentNvSlice !== currentSlice) {
-      nv.scene.crosshairPos[2] = currentSlice / maxSlice
+    if (currentNvSlice !== targetNvSlice) {
+      nv.scene.crosshairPos[2] = targetNvSlice / maxSlice
       nv.drawScene()
     }
-  }, [currentSlice, volumeLoaded, maxSlice])
+  }, [currentSlice, volumeLoaded, maxSlice, zFlipped])
 
   // AI Overlay NIfTI 로드 (NiiVue 오버레이 볼륨)
   // - Liver mask (label=1): 녹색
   // - Metastasis (label=2): 빨간색
   // ★ 메모리 최적화: cancelled 플래그로 케이스 전환 시 stale 요청 무시
+  // ★ Race Condition 방지: 기본 볼륨이 실제로 로드되었는지 확인
   useEffect(() => {
     const nv = nvRef.current
     if (!nv || !volumeLoaded) return
+
+    // ★ 핵심 수정: 기본 볼륨이 실제로 존재하는지 확인
+    // 케이스 전환 시 volumeLoaded 상태는 이전 렌더의 값(true)을 사용할 수 있으므로
+    // 실제 nv.volumes 배열을 확인하여 Race Condition 방지
+    if (!nv.volumes || nv.volumes.length === 0) {
+      console.log('[NiiVue] Base volume not ready, skipping overlay load')
+      return
+    }
 
     let cancelled = false  // 취소 플래그
 
