@@ -120,7 +120,6 @@ export function useActivityDetector({ idleTimeout = 5 * 60 * 1000 } = {}) {
     isIdle,
     isTabVisible,
     isActive,
-    lastActivityTime: lastActivityRef.current,
     resetIdleTimer: handleActivity
   }
 }

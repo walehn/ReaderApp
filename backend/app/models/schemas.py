@@ -106,27 +106,6 @@ class StudySubmissionResponse(BaseModel):
 
 
 # =============================================================================
-# 세션 설정 스키마
-# =============================================================================
-
-class SessionConfig(BaseModel):
-    """세션 설정 (JSON 파일에서 로드)"""
-    reader_id: str
-    session_id: str
-    mode: Literal["UNAIDED", "AIDED"]
-    case_ids: list[str]
-    k_max: int = Field(default=3, description="최대 병변 마커 수")
-    ai_threshold: float = Field(default=0.30)
-
-
-class SessionState(BaseModel):
-    """현재 세션 상태"""
-    config: SessionConfig
-    current_case_index: int = 0
-    completed_cases: list[str] = []
-
-
-# =============================================================================
 # 내보내기 스키마
 # =============================================================================
 

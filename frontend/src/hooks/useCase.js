@@ -72,11 +72,6 @@ export function useCase(caseId, maxLesions = 3) {
     setCurrentSlice(clamped)
   }, [meta])
 
-  // 마우스 휠로 슬라이스 변경
-  const handleWheelSlice = useCallback((delta) => {
-    setSlice(currentSlice + (delta > 0 ? -1 : 1))
-  }, [currentSlice, setSlice])
-
   // W/L 프리셋 토글
   const toggleWL = useCallback(() => {
     setWlPreset(prev => {
@@ -93,14 +88,6 @@ export function useCase(caseId, maxLesions = 3) {
     setCustomWLState({ center, width })
     setWlMode('custom')
   }, [])
-
-  // 현재 유효한 W/L 값 계산
-  const getCurrentWL = useCallback(() => {
-    if (wlMode === 'preset') {
-      return WL_PRESETS[wlPreset]
-    }
-    return customWL
-  }, [wlMode, wlPreset, customWL])
 
   // 병변 추가
   // NiiVue (WebGL): addLesion(x, y, z, confidence) - 복셀 좌표
@@ -143,14 +130,6 @@ export function useCase(caseId, maxLesions = 3) {
     setLesions([])
   }, [])
 
-  // 케이스 초기화 (새 케이스 시작 시)
-  const resetCase = useCallback(() => {
-    // 첫 번째 슬라이스(인덱스 0)로 초기화
-    setCurrentSlice(0)
-    setLesions([])
-    setWlPreset('soft')
-  }, [])
-
   return {
     caseId,
     meta,
@@ -159,7 +138,6 @@ export function useCase(caseId, maxLesions = 3) {
     wlPreset,
     wlMode,
     customWL,
-    getCurrentWL,
     lesions,
     aiAvailable: meta?.ai_available || false,
     zFlippedBaseline: meta?.z_flipped_baseline || false,
@@ -167,14 +145,12 @@ export function useCase(caseId, maxLesions = 3) {
     loading,
     error,
     setSlice,
-    handleWheelSlice,
     toggleWL,
     setCustomWL,
     addLesion,
     removeLesion,
     updateLesionConfidence,
     clearLesions,
-    resetCase,
   }
 }
 

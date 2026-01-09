@@ -37,9 +37,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.schemas import (
     StudySubmission,
-    StudySubmissionResponse,
-    SessionConfig,
-    SessionState
+    StudySubmissionResponse
 )
 from app.models.database import get_db, StudyResult, LesionMark, Reader, StudySession
 from app.config import settings
@@ -125,8 +123,8 @@ async def submit_result(
             detail=f"Case {submission.case_id} not in current block case list"
         )
 
-    # 5. 병변 수 검증 (k_max 기본값 3)
-    k_max = settings.K_MAX if hasattr(settings, 'K_MAX') else 3
+    # 5. 병변 수 검증
+    k_max = settings.MAX_LESIONS
     if len(submission.lesions) > k_max:
         raise HTTPException(
             status_code=400,

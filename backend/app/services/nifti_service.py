@@ -42,8 +42,6 @@ class NIfTIService:
         self.positive_dir = settings.POSITIVE_DIR
         self.negative_dir = settings.NEGATIVE_DIR
         self.ai_label_dir = settings.AI_LABEL_DIR
-        self.wl_presets = settings.WL_PRESETS
-        self.jpeg_quality = settings.JPEG_QUALITY
 
     # =========================================================================
     # 파일 경로 매핑
@@ -237,91 +235,6 @@ class NIfTIService:
             z_flipped_baseline=z_flipped_baseline,
             z_flipped_followup=z_flipped_followup
         )
-
-    # =========================================================================
-    # 슬라이스 렌더링
-    # =========================================================================
-
-    def _apply_window_level(
-        self, data: np.ndarray, wl_preset: str
-    ) -> np.ndarray:
-        """Window/Level 적용"""
-        preset = self.wl_presets[wl_preset]
-        ww = preset["ww"]
-        wl = preset["wl"]
-
-        # Window/Level 공식
-        lower = wl - ww / 2
-        upper = wl + ww / 2
-
-        # 클리핑 및 정규화
-        windowed = np.clip(data, lower, upper)
-        normalized = ((windowed - lower) / (upper - lower) * 255).astype(np.uint8)
-
-        return normalized
-
-    def _to_image(self, array_2d: np.ndarray, format: str = "png") -> bytes:
-        """
-        2D numpy 배열을 이미지 bytes로 변환
-
-        Args:
-            array_2d: 2D numpy 배열
-            format: 'png' (무손실) 또는 'jpeg' (손실)
-
-        Returns:
-            이미지 bytes
-        """
-        # Y축 반전 (의료 영상 관례)
-        array_2d = np.flipud(array_2d)
-
-        img = Image.fromarray(array_2d, mode="L")
-        buffer = BytesIO()
-
-        if format.lower() == "png":
-            img.save(buffer, format="PNG", compress_level=6)
-        else:
-            # JPEG: 설정된 품질 사용 (기본값: 85)
-            img.save(buffer, format="JPEG", quality=self.jpeg_quality)
-
-        return buffer.getvalue()
-
-    async def render_slice(
-        self, case_id: str, series: str, z: int, wl: str, format: str = "png"
-    ) -> tuple[bytes, str]:
-        """
-        슬라이스를 이미지로 렌더링 (레거시 - NiiVue 전환으로 미사용)
-
-        Args:
-            case_id: 케이스 ID
-            series: "baseline" | "followup"
-            z: Z 슬라이스 인덱스 (논리적 인덱스, z_flipped 자동 적용)
-            wl: Window/Level 프리셋 ("liver" | "soft")
-            format: "png" (무손실, 권장) 또는 "jpeg" (손실)
-
-        Returns:
-            (이미지 bytes, media_type) 튜플
-
-        Note:
-            NiiVue에서는 /nifti/volume으로 파일을 직접 스트리밍합니다.
-            이 함수는 레거시 호환성을 위해 유지됩니다.
-        """
-        # 볼륨 로드
-        volume, _, z_flipped = await self.load_volume(case_id, series)
-
-        # Z 인덱스 검증
-        if z < 0 or z >= volume.shape[2]:
-            raise ValueError(f"Invalid slice index: {z} (max: {volume.shape[2] - 1})")
-
-        # z_flipped인 경우 실제 슬라이스 인덱스 반전
-        actual_z = (volume.shape[2] - 1 - z) if z_flipped else z
-
-        # 슬라이스 추출 및 렌더링
-        slice_data = volume[:, :, actual_z].T  # Transpose for proper orientation
-        windowed = self._apply_window_level(slice_data, wl)
-        image_bytes = self._to_image(windowed, format)
-
-        media_type = "image/png" if format == "png" else "image/jpeg"
-        return image_bytes, media_type
 
 
 # 싱글톤 인스턴스

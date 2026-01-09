@@ -63,26 +63,6 @@ export const api = {
   },
 
   /**
-   * 슬라이스 이미지 URL 생성
-   * @param {string} caseId - 케이스 ID
-   * @param {string} series - 'baseline' | 'followup'
-   * @param {number} z - 슬라이스 인덱스
-   * @param {string} wl - 'liver' | 'soft'
-   * @param {string} format - 'png' (무손실) | 'jpeg' (손실)
-   * @returns {string} - 이미지 URL
-   */
-  getSliceUrl: (caseId, series, z, wl = 'liver', format = 'png') => {
-    const params = new URLSearchParams({
-      case_id: caseId,
-      series: series,
-      z: z.toString(),
-      wl: wl,
-      format: format,
-    })
-    return `${API_BASE}/render/slice?${params}`
-  },
-
-  /**
    * 결과 제출
    * @param {Object} data - 제출 데이터
    * @returns {Promise<{success, message, result_id}>}
@@ -92,26 +72,6 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     })
-  },
-
-  /**
-   * 세션 설정 조회
-   * @param {string} readerId - Reader ID
-   * @param {string} sessionId - Session ID
-   * @returns {Promise<SessionConfig>}
-   */
-  getSessionConfig: async (readerId, sessionId) => {
-    return fetchApi(`/study/session?reader_id=${encodeURIComponent(readerId)}&session_id=${encodeURIComponent(sessionId)}`)
-  },
-
-  /**
-   * 세션 진행 상황 조회
-   * @param {string} readerId - Reader ID
-   * @param {string} sessionId - Session ID
-   * @returns {Promise<SessionState>}
-   */
-  getSessionProgress: async (readerId, sessionId) => {
-    return fetchApi(`/study/progress?reader_id=${encodeURIComponent(readerId)}&session_id=${encodeURIComponent(sessionId)}`)
   },
 
   /**

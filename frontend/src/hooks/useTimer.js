@@ -83,13 +83,6 @@ export function useTimer() {
     startTimeRef.current = null
   }, [])
 
-  // 일시정지 (이유 없이)
-  const pause = useCallback(() => {
-    if (isRunning) {
-      setIsRunning(false)
-    }
-  }, [isRunning])
-
   // 일시정지 (이유 포함 - 비활성 감지용)
   const pauseWithReason = useCallback((reason = 'idle') => {
     if (isRunning) {
@@ -123,7 +116,6 @@ export function useTimer() {
     start,
     stop,
     reset,
-    pause,
     pauseWithReason,
     resume,
     formattedTime: formattedTime(),
