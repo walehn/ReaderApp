@@ -212,7 +212,7 @@ docker compose logs -f
 | `/nifti/info` | GET | NIfTI 메타데이터 |
 
 **파라미터**:
-- `case_id`: 케이스 ID (예: `pos_enriched_001_10667525`)
+- `case_id`: 케이스 ID
 - `series`: `baseline` | `followup`
 - `reader_id`, `session_id`: AI 오버레이 접근 검증용
 
@@ -236,7 +236,7 @@ docker compose logs -f
   "reader_id": "RAD01",
   "session_id": "S1",
   "mode": "UNAIDED",
-  "case_id": "pos_enriched_001_10667525",
+  "case_id": "case_0001",
   "patient_new_met_present": true,
   "lesions": [
     {"x": 128, "y": 128, "z": 40, "confidence": "probable"}
