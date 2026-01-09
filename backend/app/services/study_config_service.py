@@ -206,13 +206,21 @@ class StudyConfigService:
         Returns:
             bool: True면 새로 잠금, False면 이미 잠김
 
+        Raises:
+            RuntimeError: Lock 설정 중 오류 발생 시
+
         Note:
             SQLite BEGIN IMMEDIATE로 동시성 제어
+            기존 트랜잭션이 있으면 먼저 커밋 후 진행
         """
-        # SQLite 동시성 제어: BEGIN IMMEDIATE
-        await self.db.execute(text("BEGIN IMMEDIATE"))
-
         try:
+            # 기존 트랜잭션 정리 (BEGIN IMMEDIATE 충돌 방지)
+            if self.db.in_transaction():
+                await self.db.commit()
+
+            # SQLite 동시성 제어: BEGIN IMMEDIATE
+            await self.db.execute(text("BEGIN IMMEDIATE"))
+
             config = await self._get_config_locked()
 
             if config.is_locked:
@@ -241,11 +249,12 @@ class StudyConfigService:
             return True
 
         except Exception as e:
-            await self.db.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Lock 설정 실패: {str(e)}"
-            )
+            try:
+                await self.db.rollback()
+            except Exception:
+                pass  # rollback 실패 무시
+            # HTTPException 대신 RuntimeError 사용 (라우터에서 처리)
+            raise RuntimeError(f"Lock 설정 실패: {str(e)}")
 
     async def manual_lock(self, admin_id: int) -> bool:
         """

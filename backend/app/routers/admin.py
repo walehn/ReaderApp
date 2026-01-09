@@ -42,7 +42,6 @@ from io import StringIO
 
 from app.models.database import get_db, StudyResult, LesionMark, AuditLog, Reader
 from app.services.session_service import session_service
-from app.services.cache_service import get_cache_stats, clear_all_caches
 from app.core.dependencies import require_admin
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -186,31 +185,6 @@ async def list_sessions() -> dict:
     """
     sessions = session_service.list_sessions()
     return {"sessions": sessions}
-
-
-@router.get("/cache-stats")
-async def get_cache_statistics() -> dict:
-    """
-    캐시 통계 조회
-
-    Returns:
-        각 캐시의 현재 크기 및 최대 크기
-    """
-    return get_cache_stats()
-
-
-@router.post("/cache-clear")
-async def clear_caches(
-    admin: Reader = Depends(require_admin)
-) -> dict:
-    """
-    모든 캐시 초기화 (관리자 전용)
-
-    Returns:
-        성공 메시지
-    """
-    clear_all_caches()
-    return {"message": "All caches cleared"}
 
 
 # =============================================================================

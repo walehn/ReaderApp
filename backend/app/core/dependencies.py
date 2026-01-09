@@ -28,6 +28,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import make_transient
 
 from app.models.database import async_session, Reader
 from app.core.security import decode_token
@@ -123,6 +124,22 @@ async def get_current_reader(
             detail="사용자를 찾을 수 없습니다",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # MissingGreenlet 에러 방지: 필요한 스칼라 속성들을 세션 컨텍스트 내에서 즉시 로드
+    # 다른 DB 세션에서 접근할 때 lazy loading을 방지하여 캐싱된 값 사용
+    _ = reader.id
+    _ = reader.reader_code
+    _ = reader.name
+    _ = reader.email
+    _ = reader.role
+    _ = reader.group
+    _ = reader.is_active
+    _ = reader.created_at
+    _ = reader.last_login_at
+
+    # 핵심: 세션에서 완전히 분리하여 다른 세션 컨텍스트에서 안전하게 사용
+    # make_transient()는 객체를 detached → transient 상태로 전환하여 세션 참조 제거
+    make_transient(reader)
 
     return reader
 

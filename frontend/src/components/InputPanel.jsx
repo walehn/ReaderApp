@@ -13,6 +13,11 @@
  *   - isSubmitting: 제출 중 여부
  *   - timeElapsed: 경과 시간 문자열
  *
+ * 디자인:
+ *   - 글래스모피즘 카드
+ *   - 그라데이션 버튼
+ *   - 애니메이션 효과
+ *
  * 사용 예시:
  *   <InputPanel
  *     patientDecision={decision}
@@ -23,6 +28,59 @@
  * ============================================================================
  */
 
+// 아이콘 컴포넌트
+const ClockIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="12" r="10" />
+    <path d="M12 6v6l4 2" strokeLinecap="round" />
+  </svg>
+)
+
+const CheckIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const XIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const WarningIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const SendIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const TargetIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <circle cx="12" cy="12" r="10" />
+    <circle cx="12" cy="12" r="6" />
+    <circle cx="12" cy="12" r="2" />
+  </svg>
+)
+
+const TrashIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+const PauseIcon = ({ className = "w-4 h-4" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="6" y="4" width="4" height="16" rx="1" />
+    <rect x="14" y="4" width="4" height="16" rx="1" />
+  </svg>
+)
+
 export function InputPanel({
   patientDecision,
   onDecisionChange,
@@ -31,103 +89,158 @@ export function InputPanel({
   onClearLesions,
   isSubmitting = false,
   timeElapsed = '0:00',
+  isPaused = false,
+  pauseReason = null,
 }) {
-  // 제출 가능 여부 (환자 판정 필수)
-  const canSubmit = patientDecision !== null && !isSubmitting
+  // 불일치 검증: 판정과 병변 마킹 상태가 일치해야 함
+  const yesWithoutLesion = patientDecision === true && lesionCount === 0
+  const noWithLesion = patientDecision === false && lesionCount > 0
 
-  // Yes 선택 시 병변이 없으면 경고
-  const showLesionWarning = patientDecision === true && lesionCount === 0
+  // 제출 가능 조건: 판정 선택 + 제출중 아님 + 불일치 없음
+  const canSubmit = patientDecision !== null && !isSubmitting && !yesWithoutLesion && !noWithLesion
 
   return (
-    <div className="bg-medical-dark rounded-lg p-4 space-y-4">
+    <div className="glass-card rounded-xl p-4 h-full flex flex-col">
       {/* 시간 표시 */}
-      <div className="flex justify-between items-center text-sm">
-        <span className="text-gray-400">소요 시간</span>
-        <span className="text-white font-mono text-lg">{timeElapsed}</span>
+      <div className="flex items-center justify-between mb-4 pb-4 border-b border-white/5">
+        <div className="flex items-center gap-2 text-gray-400">
+          <ClockIcon className="w-5 h-5" />
+          <span className="text-sm">소요 시간</span>
+        </div>
+        <div className="flex items-center gap-2">
+          {isPaused && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/20 border border-amber-500/30 animate-pulse">
+              <PauseIcon className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-xs text-amber-400 font-medium">
+                {pauseReason === 'tab_hidden' ? '탭 비활성' : '대기 중'}
+              </span>
+            </div>
+          )}
+          <span className={`text-2xl font-bold font-mono tabular-nums tracking-wider ${
+            isPaused ? 'text-amber-400' : 'text-white'
+          }`}>
+            {timeElapsed}
+          </span>
+        </div>
       </div>
 
       {/* 환자 수준 판정 */}
-      <div>
-        <label className="block text-white font-semibold mb-2">
+      <div className="flex-1">
+        <label className="block text-white font-semibold mb-3">
           새로운 간 전이 병변이 있습니까?
           <span className="text-red-400 ml-1">*</span>
         </label>
 
-        <div className="flex gap-4">
+        <div className="grid grid-cols-2 gap-3 mb-4">
           <button
             onClick={() => onDecisionChange(true)}
-            className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+            className={`relative py-4 rounded-xl font-bold text-lg transition-all duration-300 overflow-hidden ${
               patientDecision === true
-                ? 'bg-red-600 text-white ring-2 ring-red-400'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/25 scale-[1.02]'
+                : 'bg-white/5 text-gray-400 border border-white/5 hover:bg-white/10 hover:border-white/10'
             }`}
           >
-            예 (Yes)
+            <div className="flex items-center justify-center gap-2">
+              {patientDecision === true && <CheckIcon className="w-5 h-5" />}
+              <span>예 (Yes)</span>
+            </div>
+            {patientDecision === true && (
+              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-pulse" />
+            )}
           </button>
           <button
             onClick={() => onDecisionChange(false)}
-            className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+            className={`relative py-4 rounded-xl font-bold text-lg transition-all duration-300 overflow-hidden ${
               patientDecision === false
-                ? 'bg-green-600 text-white ring-2 ring-green-400'
-                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25 scale-[1.02]'
+                : 'bg-white/5 text-gray-400 border border-white/5 hover:bg-white/10 hover:border-white/10'
             }`}
           >
-            아니오 (No)
+            <div className="flex items-center justify-center gap-2">
+              {patientDecision === false && <XIcon className="w-5 h-5" />}
+              <span>아니오 (No)</span>
+            </div>
+            {patientDecision === false && (
+              <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 animate-pulse" />
+            )}
           </button>
         </div>
-      </div>
 
-      {/* 병변 마킹 경고 */}
-      {showLesionWarning && (
-        <div className="bg-yellow-900/30 border border-yellow-600 rounded-lg p-3">
-          <p className="text-yellow-400 text-sm flex items-center gap-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-            "예"를 선택했지만 병변이 마킹되지 않았습니다
-          </p>
-        </div>
-      )}
-
-      {/* 병변 상태 */}
-      <div className="flex justify-between items-center text-sm text-gray-400">
-        <span>마킹된 병변: {lesionCount}개</span>
-        {lesionCount > 0 && (
-          <button
-            onClick={onClearLesions}
-            className="text-gray-500 hover:text-red-400 transition-colors underline"
-          >
-            모두 삭제
-          </button>
+        {/* "예" + 병변 없음 경고 */}
+        {yesWithoutLesion && (
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 mb-4 animate-fade-in-up">
+            <div className="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+              <WarningIcon className="w-5 h-5 text-red-400" />
+            </div>
+            <div className="text-red-400 text-sm">
+              <p className="font-medium">"예"를 선택했지만 병변이 마킹되지 않았습니다</p>
+              <p className="text-red-400/70 text-xs mt-0.5">병변을 마킹하거나 판정을 변경해주세요</p>
+            </div>
+          </div>
         )}
+
+        {/* "아니오" + 병변 있음 경고 */}
+        {noWithLesion && (
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4 animate-fade-in-up">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+              <WarningIcon className="w-5 h-5 text-amber-400" />
+            </div>
+            <div className="text-amber-400 text-sm">
+              <p className="font-medium">"아니오"를 선택했지만 병변이 마킹되어 있습니다</p>
+              <p className="text-amber-400/70 text-xs mt-0.5">병변을 삭제하거나 판정을 변경해주세요</p>
+            </div>
+          </div>
+        )}
+
+        {/* 병변 상태 */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 mb-4">
+          <div className="flex items-center gap-2 text-gray-400">
+            <TargetIcon className="w-4 h-4" />
+            <span className="text-sm">마킹된 병변</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-white font-bold">{lesionCount}개</span>
+            {lesionCount > 0 && (
+              <button
+                onClick={onClearLesions}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
+                  text-gray-500 hover:text-red-400 hover:bg-red-500/10
+                  transition-all duration-300"
+              >
+                <TrashIcon className="w-3.5 h-3.5" />
+                삭제
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 제출 버튼 */}
       <button
         onClick={onSubmit}
         disabled={!canSubmit}
-        className={`w-full py-3 rounded-lg font-semibold text-lg transition-all ${
+        className={`w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-2 ${
           canSubmit
-            ? 'bg-primary-600 hover:bg-primary-700 text-white'
-            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+            ? 'btn-primary text-white'
+            : 'bg-white/5 text-gray-600 cursor-not-allowed border border-white/5'
         }`}
       >
         {isSubmitting ? (
-          <span className="flex items-center justify-center gap-2">
-            <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            제출 중...
-          </span>
+          <>
+            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            <span>제출 중...</span>
+          </>
         ) : (
-          '제출 및 다음 케이스'
+          <>
+            <SendIcon className="w-5 h-5" />
+            <span>제출 및 다음 케이스</span>
+          </>
         )}
       </button>
 
       {/* 필수 입력 안내 */}
       {patientDecision === null && (
-        <p className="text-gray-500 text-xs text-center">
+        <p className="text-gray-600 text-xs text-center mt-3">
           * 환자 수준 판정을 선택해주세요
         </p>
       )}

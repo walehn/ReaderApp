@@ -1,16 +1,17 @@
 """
 ============================================================================
-Study Config Router - Reader Study MVP
+Study Config Router - Reader Study
 ============================================================================
 역할: 전역 연구 설정 관리 API
 
 엔드포인트:
-  - GET  /study-config          현재 연구 설정 조회
+  - GET  /study-config          현재 연구 설정 조회 (관리자 전용)
   - PUT  /study-config          연구 설정 수정 (Lock 전만 핵심 필드 수정 가능)
   - POST /study-config/lock     수동 설정 잠금
+  - GET  /study-config/public   공개 설정 조회 (인증 불필요, 세션/블록 수만)
 
 인증:
-  모든 엔드포인트는 관리자 권한 필요 (require_admin)
+  - /study-config/public 제외 모든 엔드포인트는 관리자 권한 필요
 
 Lock 정책:
   - 첫 세션 시작 시 자동 잠금 (enter_session에서 트리거)
@@ -18,8 +19,8 @@ Lock 정책:
                 crossover_mapping, k_max, require_lesion_marking
   - 수정 가능: study_name, study_description, ai_threshold
 
-MVP 제한:
-  - 세션=2, 블록=2, 그룹=2 구조만 공식 지원
+설정 범위:
+  - 세션: 1-20, 블록: 1-4, 그룹: 1-10
 ============================================================================
 """
 
@@ -30,6 +31,7 @@ import json
 from app.models.database import get_db, Reader, AuditLog
 from app.models.schemas import (
     StudyConfigResponse,
+    StudyConfigPublicResponse,
     StudyConfigUpdateRequest,
     MessageResponse
 )
@@ -90,22 +92,25 @@ async def update_study_config(
     """
     service = StudyConfigService(db)
 
-    # MVP 제한: 2x2x2 구조만 허용
-    if config_data.total_sessions is not None and config_data.total_sessions != 2:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="MVP에서는 세션 수를 2로만 설정할 수 있습니다"
-        )
-    if config_data.total_blocks is not None and config_data.total_blocks != 2:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="MVP에서는 블록 수를 2로만 설정할 수 있습니다"
-        )
-    if config_data.total_groups is not None and config_data.total_groups != 2:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="MVP에서는 그룹 수를 2로만 설정할 수 있습니다"
-        )
+    # 범위 검증: 세션 1-20, 블록 1-4, 그룹 1-10
+    if config_data.total_sessions is not None:
+        if config_data.total_sessions < 1 or config_data.total_sessions > 20:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="세션 수는 1-20 사이여야 합니다"
+            )
+    if config_data.total_blocks is not None:
+        if config_data.total_blocks < 1 or config_data.total_blocks > 4:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="블록 수는 1-4 사이여야 합니다"
+            )
+    if config_data.total_groups is not None:
+        if config_data.total_groups < 1 or config_data.total_groups > 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="그룹 수는 1-10 사이여야 합니다"
+            )
 
     # 설정 수정
     update_data = config_data.model_dump(exclude_unset=True)
@@ -165,4 +170,33 @@ async def lock_study_config(
 
     return MessageResponse(
         message="연구 설정이 잠겼습니다. 핵심 설정은 더 이상 변경할 수 없습니다."
+    )
+
+
+# =============================================================================
+# 공개 연구 설정 조회 (인증 불필요)
+# =============================================================================
+
+@router.get("/public", response_model=StudyConfigPublicResponse)
+async def get_public_study_config(
+    db: AsyncSession = Depends(get_db)
+) -> StudyConfigPublicResponse:
+    """
+    공개 연구 설정 조회 (인증 불필요)
+
+    ViewerPage에서 세션/블록 수를 조회하여 케이스 할당에 사용.
+    민감한 정보 없이 최소한의 설정만 반환.
+    group_names는 표시용으로 포함 (민감 정보 아님).
+
+    Returns:
+        StudyConfigPublicResponse: 공개 연구 설정 (세션 수, 블록 수, 연구명, 그룹명)
+    """
+    service = StudyConfigService(db)
+    config_dict = await service.get_config_dict()
+
+    return StudyConfigPublicResponse(
+        total_sessions=config_dict["total_sessions"],
+        total_blocks=config_dict["total_blocks"],
+        study_name=config_dict["study_name"],
+        group_names=config_dict.get("group_names")
     )

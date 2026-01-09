@@ -5,7 +5,7 @@ Web Reader Study MVP - FastAPI Backend
 역할: 간 전이 병변 검출을 위한 Reader Study 웹 서버
 
 주요 기능:
-  - NIfTI 이미지 슬라이스 렌더링 (PNG)
+  - NIfTI 이미지 스트리밍 (NiiVue WebGL 렌더링용)
   - AI 오버레이 제공 (AIDED 모드 전용)
   - 결과 저장 및 내보내기
   - 세션 관리
@@ -25,20 +25,17 @@ API 엔드포인트:
   - POST /sessions/assign          세션 할당 (관리자)
   - POST /sessions/{id}/reset      세션 초기화 (관리자)
 
-  케이스/렌더링:
+  케이스/NIfTI (NiiVue용):
   - GET  /case/meta          케이스 메타데이터
-  - GET  /render/slice       슬라이스 이미지
-  - GET  /render/overlay     AI 오버레이 (AIDED only)
+  - GET  /nifti/volume       NIfTI 볼륨 스트리밍
+  - GET  /nifti/overlay      AI 오버레이 NIfTI (AIDED only)
 
-  스터디 (레거시):
+  스터디:
   - POST /study/submit       결과 제출
-  - GET  /study/session      세션 설정 (JSON 파일 기반)
-  - GET  /study/progress     진행 상황
 
   관리자:
   - GET  /admin/export       데이터 내보내기
   - GET  /admin/sessions     세션 목록
-  - GET  /admin/cache-stats  캐시 통계
 
 사용법:
   # 개발 모드
@@ -59,7 +56,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.models.database import init_db
-from app.routers import case, render, study, admin, auth, sessions, readers
+from app.routers import case, study, admin, auth, sessions, readers, nifti
 from app.routers import study_config, dashboard  # 연구 설정 및 대시보드 (MVP)
 from app.config import settings
 from app.core.middleware import (
@@ -100,9 +97,15 @@ app = FastAPI(
 # =============================================================================
 
 # CORS 설정 (개발용 - 프로덕션에서는 제한 필요)
+# 외부 접속 허용을 위해 다양한 origin 추가
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://192.168.0.5:5173",   # 내부 IP
+        "http://10.10.153.48:5173",  # 외부 IP (공유기)
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -126,7 +129,7 @@ app.include_router(auth.router)
 
 # 기능 라우터
 app.include_router(case.router)
-app.include_router(render.router)
+app.include_router(nifti.router)         # NIfTI 파일 직접 스트리밍 (WebGL용)
 app.include_router(study.router)
 app.include_router(sessions.router)      # DB 기반 세션 관리 (Phase 3)
 app.include_router(readers.router)       # 리더 관리 (Phase 5)

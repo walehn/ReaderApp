@@ -23,10 +23,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../services/api'
 
+// W/L 프리셋 정의
+const WL_PRESETS = {
+  liver: { center: 50, width: 150 },
+  soft: { center: 40, width: 400 }
+}
+
 export function useCase(caseId, maxLesions = 3) {
   const [meta, setMeta] = useState(null)
   const [currentSlice, setCurrentSlice] = useState(0)
-  const [wlPreset, setWlPreset] = useState('liver')
+  const [wlPreset, setWlPreset] = useState('soft')
+  // 커스텀 W/L 값 (드래그로 조정 시 사용)
+  const [customWL, setCustomWLState] = useState({ center: 40, width: 400 })
+  // W/L 모드: 'preset' (버튼) 또는 'custom' (드래그)
+  const [wlMode, setWlMode] = useState('preset')
   const [lesions, setLesions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -41,8 +51,8 @@ export function useCase(caseId, maxLesions = 3) {
         setError(null)
         const caseMeta = await api.getCaseMeta(caseId)
         setMeta(caseMeta)
-        // 중간 슬라이스로 초기화
-        setCurrentSlice(Math.floor(caseMeta.slices / 2))
+        // 첫 번째 슬라이스(인덱스 0)로 초기화
+        setCurrentSlice(0)
         // 병변 초기화
         setLesions([])
       } catch (err) {
@@ -62,28 +72,40 @@ export function useCase(caseId, maxLesions = 3) {
     setCurrentSlice(clamped)
   }, [meta])
 
-  // 마우스 휠로 슬라이스 변경
-  const handleWheelSlice = useCallback((delta) => {
-    setSlice(currentSlice + (delta > 0 ? -1 : 1))
-  }, [currentSlice, setSlice])
-
   // W/L 프리셋 토글
   const toggleWL = useCallback(() => {
-    setWlPreset(prev => prev === 'liver' ? 'soft' : 'liver')
+    setWlPreset(prev => {
+      const newPreset = prev === 'liver' ? 'soft' : 'liver'
+      // 프리셋 선택 시 커스텀 W/L도 해당 값으로 업데이트
+      setCustomWLState(WL_PRESETS[newPreset])
+      setWlMode('preset')
+      return newPreset
+    })
+  }, [])
+
+  // 커스텀 W/L 설정 (드래그로 조정 시)
+  const setCustomWL = useCallback((center, width) => {
+    setCustomWLState({ center, width })
+    setWlMode('custom')
   }, [])
 
   // 병변 추가
-  const addLesion = useCallback((x, y, confidence = 'probable') => {
+  // NiiVue (WebGL): addLesion(x, y, z, confidence) - 복셀 좌표
+  // Server (PNG): addLesion(x, y, z) - z는 현재 슬라이스, x/y는 캔버스 픽셀
+  const addLesion = useCallback((x, y, z = null, confidence = 'probable') => {
     if (lesions.length >= maxLesions) {
       console.warn(`Maximum ${maxLesions} lesions allowed`)
       return false
     }
 
+    // z가 제공되지 않으면 currentSlice 사용 (서버 렌더링 호환)
+    const sliceZ = z !== null ? z : currentSlice
+
     const newLesion = {
       id: Date.now(), // 임시 ID
       x,
       y,
-      z: currentSlice,
+      z: sliceZ,
       confidence,
     }
 
@@ -108,33 +130,27 @@ export function useCase(caseId, maxLesions = 3) {
     setLesions([])
   }, [])
 
-  // 케이스 초기화 (새 케이스 시작 시)
-  const resetCase = useCallback(() => {
-    if (meta) {
-      setCurrentSlice(Math.floor(meta.slices / 2))
-    }
-    setLesions([])
-    setWlPreset('liver')
-  }, [meta])
-
   return {
     caseId,
     meta,
     currentSlice,
     totalSlices: meta?.slices || 0,
     wlPreset,
+    wlMode,
+    customWL,
     lesions,
     aiAvailable: meta?.ai_available || false,
+    zFlippedBaseline: meta?.z_flipped_baseline || false,
+    zFlippedFollowup: meta?.z_flipped_followup || false,
     loading,
     error,
     setSlice,
-    handleWheelSlice,
     toggleWL,
+    setCustomWL,
     addLesion,
     removeLesion,
     updateLesionConfidence,
     clearLesions,
-    resetCase,
   }
 }
 

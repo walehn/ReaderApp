@@ -185,6 +185,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     보안 헤더 미들웨어
 
     OWASP 권장 보안 헤더를 응답에 추가합니다.
+    NiiVue WebGL 렌더링을 위한 COOP/COEP 헤더도 포함합니다.
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
@@ -195,6 +196,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Cross-Origin Isolation (SharedArrayBuffer 사용을 위해 필요)
+        # NiiVue WebGL 렌더링 최적화에 필요한 헤더
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
 
         # HTTPS 환경에서만 HSTS 헤더 추가
         if request.url.scheme == "https":

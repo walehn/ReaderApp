@@ -1,0 +1,137 @@
+# ============================================================================
+# ReaderApp Docker Compose Configuration
+# ============================================================================
+# 역할: 전체 서비스 오케스트레이션 (Backend, Frontend/Nginx)
+#
+# 사용법:
+#   # 초기 설정
+#   cp .env.example .env
+#   # .env 파일에서 SECRET_KEY 설정
+#
+#   # 시작 (빌드 포함)
+#   docker-compose up -d --build
+#
+#   # 로그 확인
+#   docker-compose logs -f
+#   docker-compose logs -f backend   # 특정 서비스만
+#
+#   # 상태 확인
+#   docker-compose ps
+#
+#   # 중지
+#   docker-compose down
+#
+#   # 업데이트 배포
+#   git pull && docker-compose up -d --build
+#
+# 서비스:
+#   - backend: FastAPI 서버 (포트 8000, 내부)
+#   - frontend: Nginx + React 정적 파일 (포트 80, 외부)
+#
+# 볼륨:
+#   - dataset: NIfTI 의료 이미지 (읽기 전용, ~5GB)
+#   - results: SQLite DB 및 결과 (읽기/쓰기)
+#   - cases: 테스트 케이스 (읽기 전용)
+#   - sessions: 세션 설정 JSON (읽기 전용)
+#
+# 환경 변수:
+#   .env 파일 또는 시스템 환경 변수에서 로드
+#   - SECRET_KEY: JWT 서명 키 (필수!)
+#   - HTTP_PORT: 외부 HTTP 포트 (기본: 80)
+#   - DEBUG: 디버그 모드 (기본: false)
+# ============================================================================
+
+services:
+  # ===========================================================================
+  # Backend Service (FastAPI)
+  # ===========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: readerapp-backend
+    restart: unless-stopped
+
+    # 환경 변수
+    environment:
+      # 보안 설정
+      - READER_STUDY_SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - READER_STUDY_DEBUG=${DEBUG:-false}
+      # ALLOWED_IP_RANGES는 필요 시 .env에서 설정 (기본: 모든 IP 허용)
+      # Docker 컨테이너 내부 경로
+      - READER_STUDY_CASES_DIR=/app/cases
+      - READER_STUDY_SESSIONS_DIR=/app/sessions
+      - READER_STUDY_RESULTS_DIR=/app/results
+      - READER_STUDY_DATASET_DIR=/app/dataset
+
+    # 볼륨 마운트 (호스트 → 컨테이너)
+    volumes:
+      - ./dataset:/app/dataset:ro          # NIfTI 이미지 (읽기 전용)
+      - ./cases:/app/cases:ro              # 테스트 케이스 (읽기 전용)
+      - ./sessions:/app/sessions:ro        # 세션 설정 (읽기 전용)
+      - ./results:/app/results:rw          # 결과 및 DB (읽기/쓰기)
+
+    # 네트워크
+    networks:
+      - readerapp-network
+
+    # 헬스 체크
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # 로깅 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ===========================================================================
+  # Frontend Service (Nginx + React)
+  # ===========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    container_name: readerapp-frontend
+    restart: unless-stopped
+
+    # 포트 매핑 (외부:내부)
+    ports:
+      - "${HTTP_PORT:-80}:80"
+
+    # 백엔드 의존성 (Backend가 healthy 상태일 때만 시작)
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    # 네트워크
+    networks:
+      - readerapp-network
+
+    # 헬스 체크
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # 로깅 설정
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  readerapp-network:
+    driver: bridge
+    name: readerapp-network

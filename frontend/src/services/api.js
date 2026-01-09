@@ -63,48 +63,6 @@ export const api = {
   },
 
   /**
-   * 슬라이스 이미지 URL 생성
-   * @param {string} caseId - 케이스 ID
-   * @param {string} series - 'baseline' | 'followup'
-   * @param {number} z - 슬라이스 인덱스
-   * @param {string} wl - 'liver' | 'soft'
-   * @param {string} format - 'png' (무손실) | 'jpeg' (손실)
-   * @returns {string} - 이미지 URL
-   */
-  getSliceUrl: (caseId, series, z, wl = 'liver', format = 'png') => {
-    const params = new URLSearchParams({
-      case_id: caseId,
-      series: series,
-      z: z.toString(),
-      wl: wl,
-      format: format,
-    })
-    return `${API_BASE}/render/slice?${params}`
-  },
-
-  /**
-   * AI 오버레이 URL 생성 (AIDED 모드 전용)
-   * @param {string} caseId - 케이스 ID
-   * @param {number} z - 슬라이스 인덱스
-   * @param {string} readerId - Reader ID
-   * @param {string} sessionId - Session ID
-   * @param {number} threshold - 확률 임계값 (기본 0.30)
-   * @param {number} alpha - 투명도 (기본 0.4)
-   * @returns {string} - 오버레이 URL
-   */
-  getOverlayUrl: (caseId, z, readerId, sessionId, threshold = 0.30, alpha = 0.4) => {
-    const params = new URLSearchParams({
-      case_id: caseId,
-      z: z.toString(),
-      threshold: threshold.toString(),
-      alpha: alpha.toString(),
-      reader_id: readerId,
-      session_id: sessionId,
-    })
-    return `${API_BASE}/render/overlay?${params}`
-  },
-
-  /**
    * 결과 제출
    * @param {Object} data - 제출 데이터
    * @returns {Promise<{success, message, result_id}>}
@@ -117,23 +75,23 @@ export const api = {
   },
 
   /**
-   * 세션 설정 조회
-   * @param {string} readerId - Reader ID
-   * @param {string} sessionId - Session ID
-   * @returns {Promise<SessionConfig>}
+   * 공개 연구 설정 조회 (인증 불필요)
+   * ViewerPage에서 세션/블록 수를 조회하여 케이스 할당에 사용
+   * @returns {Promise<{total_sessions, total_blocks, study_name}>}
    */
-  getSessionConfig: async (readerId, sessionId) => {
-    return fetchApi(`/study/session?reader_id=${encodeURIComponent(readerId)}&session_id=${encodeURIComponent(sessionId)}`)
+  getPublicStudyConfig: async () => {
+    return fetchApi('/study-config/public')
   },
 
   /**
-   * 세션 진행 상황 조회
-   * @param {string} readerId - Reader ID
-   * @param {string} sessionId - Session ID
-   * @returns {Promise<SessionState>}
+   * 케이스 할당 조회
+   * 세션/블록별로 할당된 케이스 목록 반환
+   * @param {number} numSessions - 총 세션 수
+   * @param {number} numBlocks - 세션당 블록 수
+   * @returns {Promise<{sessions: {S1: {block_a: [], block_b: []}, ...}}>}
    */
-  getSessionProgress: async (readerId, sessionId) => {
-    return fetchApi(`/study/progress?reader_id=${encodeURIComponent(readerId)}&session_id=${encodeURIComponent(sessionId)}`)
+  getCaseAllocation: async (numSessions = 4, numBlocks = 2) => {
+    return fetchApi(`/case/allocate?num_sessions=${numSessions}&num_blocks=${numBlocks}`)
   },
 }
 

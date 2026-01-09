@@ -39,6 +39,14 @@ class CaseMeta(BaseModel):
     slices: int = Field(..., description="Z축 슬라이스 수")
     spacing: list[float] = Field(..., description="복셀 간격 [x, y, z] mm")
     ai_available: bool = Field(default=False, description="AI 확률맵 존재 여부")
+    z_flipped_baseline: bool = Field(
+        default=False,
+        description="Baseline Z축 반전 필요 여부"
+    )
+    z_flipped_followup: bool = Field(
+        default=False,
+        description="Followup Z축 반전 필요 여부"
+    )
 
 
 # =============================================================================
@@ -95,27 +103,6 @@ class StudySubmissionResponse(BaseModel):
     success: bool
     message: str
     result_id: Optional[int] = None
-
-
-# =============================================================================
-# 세션 설정 스키마
-# =============================================================================
-
-class SessionConfig(BaseModel):
-    """세션 설정 (JSON 파일에서 로드)"""
-    reader_id: str
-    session_id: str
-    mode: Literal["UNAIDED", "AIDED"]
-    case_ids: list[str]
-    k_max: int = Field(default=3, description="최대 병변 마커 수")
-    ai_threshold: float = Field(default=0.30)
-
-
-class SessionState(BaseModel):
-    """현재 세션 상태"""
-    config: SessionConfig
-    current_case_index: int = 0
-    completed_cases: list[str] = []
 
 
 # =============================================================================
@@ -354,6 +341,14 @@ class StudyConfigResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class StudyConfigPublicResponse(BaseModel):
+    """공개 연구 설정 (인증 불필요) - 세션/블록 수 및 그룹명 노출"""
+    total_sessions: int
+    total_blocks: int
+    study_name: str
+    group_names: Optional[dict] = None  # {"group_1": "그룹명", ...} - 표시용
 
 
 class StudyConfigUpdateRequest(BaseModel):

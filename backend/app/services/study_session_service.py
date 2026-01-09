@@ -37,7 +37,7 @@ from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.database import Reader, StudySession, SessionProgress, AuditLog
+from app.models.database import Reader, StudySession, SessionProgress, AuditLog, StudyResult, LesionMark
 from app.core.security import utc_now
 from app.services.study_config_service import StudyConfigService
 
@@ -176,6 +176,12 @@ class StudySessionService:
             config_service = StudyConfigService(self.db)
             await config_service.trigger_lock_if_needed(reader_id)
 
+            # 세션 객체 새로고침 (trigger_lock 내부 commit/rollback으로 인해 만료됨)
+            # 주의: refresh()는 관계(relationship)를 재로드하지 않으므로 전체 쿼리 재실행
+            session = await self.get_session_by_id(session_id)
+            if session is None:
+                raise ValueError("세션을 찾을 수 없습니다 (새로고침 실패)")
+
             # 케이스 순서 랜덤 셔플
             shuffled_a = block_a_cases.copy()
             shuffled_b = block_b_cases.copy()
@@ -186,21 +192,31 @@ class StudySessionService:
             session.case_order_block_b = json.dumps(shuffled_b)
             session.status = "in_progress"
 
-            # 진행 상태 생성
-            new_progress = SessionProgress(
-                session_id=session.id,
-                current_block="A",
-                current_case_index=0,
-                completed_cases="[]",
-                started_at=utc_now(),
-                last_accessed_at=utc_now()
+            # 기존 진행 상태 확인 (이전 시도에서 생성되었을 수 있음)
+            existing_progress_result = await self.db.execute(
+                select(SessionProgress).where(SessionProgress.session_id == session.id)
             )
-            self.db.add(new_progress)
-            await self.db.commit()
-            await self.db.refresh(new_progress)
+            existing_progress = existing_progress_result.scalar_one_or_none()
 
-            # 진행 상태 직접 사용
-            progress = new_progress
+            if existing_progress is None:
+                # 진행 상태 새로 생성
+                new_progress = SessionProgress(
+                    session_id=session.id,
+                    current_block="A",
+                    current_case_index=0,
+                    completed_cases="[]",
+                    started_at=utc_now(),
+                    last_accessed_at=utc_now()
+                )
+                self.db.add(new_progress)
+                await self.db.commit()
+                await self.db.refresh(new_progress)
+                progress = new_progress
+            else:
+                # 기존 진행 상태 재사용
+                existing_progress.last_accessed_at = utc_now()
+                await self.db.commit()
+                progress = existing_progress
             current_block = "A"
             current_index = 0
         else:
@@ -293,6 +309,19 @@ class StudySessionService:
 
         current_case_id = case_order[current_index] if current_index < total_in_block else None
 
+        # 다음 케이스 ID 계산 (프리로딩용)
+        next_case_id = None
+        if not is_session_complete:
+            next_index = current_index + 1
+            if next_index < total_in_block:
+                # 같은 블록 내 다음 케이스
+                next_case_id = case_order[next_index]
+            elif current_block == "A":
+                # Block B의 첫 번째 케이스
+                block_b_order = json.loads(session.case_order_block_b)
+                if block_b_order:
+                    next_case_id = block_b_order[0]
+
         return {
             "session_code": session.session_code,
             "block": current_block,
@@ -302,6 +331,7 @@ class StudySessionService:
             "total_cases_in_block": total_in_block,
             "is_last_in_block": is_last_in_block,
             "is_session_complete": is_session_complete,
+            "next_case_id": next_case_id,
         }
 
     async def advance_to_next_case(
@@ -418,12 +448,11 @@ class StudySessionService:
         if reader.group is None:
             raise ValueError("리더의 그룹이 설정되지 않았습니다")
 
-        # Crossover 매핑에서 Block/Mode 결정
-        mapping_key = (reader.group, session_code)
-        if mapping_key not in CROSSOVER_MAPPING:
-            raise ValueError(f"잘못된 그룹/세션 조합: {mapping_key}")
-
-        block_a_mode, block_b_mode = CROSSOVER_MAPPING[mapping_key]
+        # DB 설정에서 Block/Mode 결정 (동적 세션/그룹 지원)
+        config_service = StudyConfigService(self.db)
+        block_a_mode, block_b_mode = await config_service.get_block_modes_from_config(
+            reader.group, session_code
+        )
 
         # 중복 확인
         existing = await self.db.execute(
@@ -478,15 +507,57 @@ class StudySessionService:
         except (ValueError, PermissionError):
             return False
 
-    async def reset_session(self, session_id: int) -> None:
+    async def reset_session(self, session_id: int, delete_results: bool = True) -> dict:
         """
         세션 초기화 (관리자용)
 
         진행 상태를 초기화하고 케이스 순서를 재생성할 수 있도록 합니다.
+
+        Args:
+            session_id: 세션 ID
+            delete_results: True면 해당 세션의 제출된 결과도 삭제 (기본값: True)
+
+        Returns:
+            삭제된 결과 수 정보
         """
         session = await self.get_session_by_id(session_id)
         if session is None:
             raise ValueError("세션을 찾을 수 없습니다")
+
+        deleted_count = {"results": 0, "lesions": 0}
+
+        # 제출된 결과 삭제 (옵션)
+        if delete_results:
+            # Reader 정보 조회 (reader_code 가져오기)
+            reader_result = await self.db.execute(
+                select(Reader).where(Reader.id == session.reader_id)
+            )
+            reader = reader_result.scalar_one_or_none()
+
+            if reader:
+                # 해당 세션의 study_results 조회
+                results_query = await self.db.execute(
+                    select(StudyResult).where(
+                        and_(
+                            StudyResult.reader_id == reader.reader_code,
+                            StudyResult.session_id == session.session_code
+                        )
+                    )
+                )
+                results = results_query.scalars().all()
+
+                # 관련 lesion_marks 삭제
+                for result in results:
+                    lesions_query = await self.db.execute(
+                        select(LesionMark).where(LesionMark.result_id == result.id)
+                    )
+                    lesions = lesions_query.scalars().all()
+                    for lesion in lesions:
+                        await self.db.delete(lesion)
+                        deleted_count["lesions"] += 1
+
+                    await self.db.delete(result)
+                    deleted_count["results"] += 1
 
         # 케이스 순서 초기화
         session.case_order_block_a = None
@@ -498,6 +569,8 @@ class StudySessionService:
             await self.db.delete(session.progress)
 
         await self.db.commit()
+
+        return deleted_count
 
     async def delete_session(self, session_id: int) -> dict:
         """

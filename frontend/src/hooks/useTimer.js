@@ -10,11 +10,15 @@
  *   - stop: 타이머 정지 (최종 시간 반환)
  *   - reset: 타이머 초기화
  *   - isRunning: 타이머 실행 중 여부
+ *   - pauseReason: 일시정지 이유 ('idle' | 'tab_hidden' | null)
+ *   - pauseWithReason: 이유와 함께 일시정지
  *
  * 사용 예시:
- *   const { elapsed, start, stop, reset } = useTimer()
+ *   const { elapsed, start, stop, reset, pauseReason, pauseWithReason } = useTimer()
  *   // 케이스 시작 시
  *   start()
+ *   // 비활성 감지 시
+ *   pauseWithReason('idle')
  *   // 제출 시
  *   const timeSpent = stop()
  * ============================================================================
@@ -25,6 +29,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 export function useTimer() {
   const [elapsed, setElapsed] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
+  const [pauseReason, setPauseReason] = useState(null) // 'idle' | 'tab_hidden' | null
   const startTimeRef = useRef(null)
   const intervalRef = useRef(null)
 
@@ -61,6 +66,7 @@ export function useTimer() {
   // 타이머 정지 (최종 시간 반환)
   const stop = useCallback(() => {
     setIsRunning(false)
+    setPauseReason(null)
     if (startTimeRef.current) {
       const finalElapsed = (Date.now() - startTimeRef.current) / 1000
       setElapsed(finalElapsed)
@@ -73,22 +79,26 @@ export function useTimer() {
   const reset = useCallback(() => {
     setIsRunning(false)
     setElapsed(0)
+    setPauseReason(null)
     startTimeRef.current = null
   }, [])
 
-  // 일시정지/재개 (선택적)
-  const pause = useCallback(() => {
+  // 일시정지 (이유 포함 - 비활성 감지용)
+  const pauseWithReason = useCallback((reason = 'idle') => {
     if (isRunning) {
       setIsRunning(false)
+      setPauseReason(reason)
     }
   }, [isRunning])
 
+  // 재개 (pauseReason 초기화)
   const resume = useCallback(() => {
     if (!isRunning && startTimeRef.current) {
       // 일시정지 시간 보정
       const pausedDuration = Date.now() - (startTimeRef.current + elapsed * 1000)
       startTimeRef.current += pausedDuration
       setIsRunning(true)
+      setPauseReason(null)
     }
   }, [isRunning, elapsed])
 
@@ -102,10 +112,11 @@ export function useTimer() {
   return {
     elapsed,
     isRunning,
+    pauseReason,
     start,
     stop,
     reset,
-    pause,
+    pauseWithReason,
     resume,
     formattedTime: formattedTime(),
   }

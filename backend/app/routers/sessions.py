@@ -105,6 +105,7 @@ class CurrentCaseResponse(BaseModel):
     total_cases_in_block: int
     is_last_in_block: bool
     is_session_complete: bool
+    next_case_id: Optional[str] = None  # 프리로딩용 다음 케이스 ID
 
 
 class AdvanceCaseRequest(BaseModel):
@@ -115,7 +116,7 @@ class AdvanceCaseRequest(BaseModel):
 class SessionAssignRequest(BaseModel):
     """세션 할당 요청 (관리자용)"""
     reader_id: int
-    session_code: str = Field(..., pattern="^S[12]$", description="S1 또는 S2")
+    session_code: str = Field(..., pattern="^S([1-9]|1[0-9]|20)$", description="S1~S20")
     k_max: int = Field(default=3, ge=1, le=10)
     ai_threshold: float = Field(default=0.30, ge=0.0, le=1.0)
 
@@ -216,6 +217,9 @@ async def enter_session(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+    except RuntimeError as e:
+        # Lock 설정 실패 등 내부 오류 처리
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
     # 감사 로그
     action = "SESSION_START" if result["is_new_session"] else "SESSION_RESUME"
@@ -365,11 +369,12 @@ async def reset_session(
 
     세션의 진행 상태를 초기화하고 다시 시작할 수 있도록 합니다.
     케이스 순서는 재진입 시 새로 생성됩니다.
+    해당 세션의 제출된 결과(study_results)도 함께 삭제됩니다.
     """
     service = StudySessionService(db)
 
     try:
-        await service.reset_session(session_id)
+        deleted_count = await service.reset_session(session_id)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
@@ -380,10 +385,13 @@ async def reset_session(
         reader_id=admin.id,
         request=request,
         resource_type="session",
-        resource_id=str(session_id)
+        resource_id=str(session_id),
+        details=f"deleted {deleted_count['results']} results, {deleted_count['lesions']} lesions"
     )
 
-    return MessageResponse(message=f"세션 {session_id}이 초기화되었습니다")
+    return MessageResponse(
+        message=f"세션 {session_id}이 초기화되었습니다 (결과 {deleted_count['results']}건, 병변 {deleted_count['lesions']}건 삭제)"
+    )
 
 
 @router.delete("/{session_id}", response_model=MessageResponse)
