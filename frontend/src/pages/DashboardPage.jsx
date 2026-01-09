@@ -621,7 +621,7 @@ export default function DashboardPage() {
           </div>
 
           {/* 주의사항 */}
-          <div className="mt-dynamic-lg p-dynamic rounded-xl bg-amber-500/10 border border-amber-500/20">
+          <div className="mt-8 lg:mt-10 p-dynamic rounded-xl bg-amber-500/10 border border-amber-500/20">
             <div className="flex items-start gap-dynamic">
               <span className="text-amber-400 text-dynamic-subtitle">⚠️</span>
               <div className="text-gray-300 text-dynamic-sm space-y-1">
