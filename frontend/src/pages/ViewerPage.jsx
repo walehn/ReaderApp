@@ -28,6 +28,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useCase } from '../hooks/useCase'
 import { useTimer } from '../hooks/useTimer'
 import { useActivityDetector } from '../hooks/useActivityDetector'
+import { usePreload } from '../hooks/usePreload'
 import { api, sessionsApi } from '../services/api'
 
 import Viewer from '../components/Viewer'
@@ -113,6 +114,9 @@ export default function ViewerPage() {
   const { isActive, isTabVisible } = useActivityDetector({
     idleTimeout: 5 * 60 * 1000  // 5분
   })
+
+  // 다음 케이스 프리로딩 (네트워크 지연 최소화)
+  usePreload(currentCase?.next_case_id)
 
   // 환자 수준 판정
   const [patientDecision, setPatientDecision] = useState(null)

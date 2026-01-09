@@ -309,6 +309,19 @@ class StudySessionService:
 
         current_case_id = case_order[current_index] if current_index < total_in_block else None
 
+        # 다음 케이스 ID 계산 (프리로딩용)
+        next_case_id = None
+        if not is_session_complete:
+            next_index = current_index + 1
+            if next_index < total_in_block:
+                # 같은 블록 내 다음 케이스
+                next_case_id = case_order[next_index]
+            elif current_block == "A":
+                # Block B의 첫 번째 케이스
+                block_b_order = json.loads(session.case_order_block_b)
+                if block_b_order:
+                    next_case_id = block_b_order[0]
+
         return {
             "session_code": session.session_code,
             "block": current_block,
@@ -318,6 +331,7 @@ class StudySessionService:
             "total_cases_in_block": total_in_block,
             "is_last_in_block": is_last_in_block,
             "is_session_complete": is_session_complete,
+            "next_case_id": next_case_id,
         }
 
     async def advance_to_next_case(

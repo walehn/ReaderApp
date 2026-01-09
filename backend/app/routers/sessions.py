@@ -105,6 +105,7 @@ class CurrentCaseResponse(BaseModel):
     total_cases_in_block: int
     is_last_in_block: bool
     is_session_complete: bool
+    next_case_id: Optional[str] = None  # 프리로딩용 다음 케이스 ID
 
 
 class AdvanceCaseRequest(BaseModel):

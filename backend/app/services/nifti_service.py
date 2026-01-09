@@ -2,37 +2,25 @@
 ============================================================================
 NIfTI Service - Reader Study MVP
 ============================================================================
-역할: NIfTI 파일 로딩 및 슬라이스 렌더링
+역할: NIfTI 파일 로딩 및 메타데이터 조회
 
 주요 기능:
-  - load_volume(): NIfTI 볼륨 로드 (캐시 활용)
   - get_case_metadata(): 케이스 메타데이터 조회
-  - render_slice(): 특정 Z 슬라이스를 PNG로 렌더링
-  - load_ai_prob(): AI 레이블 볼륨 로드 (NiiVue에서 직접 사용)
+  - _get_volume_filepath(): 볼륨 파일 경로 매핑
+  - _get_ai_prob_filepath(): AI 레이블 파일 경로 매핑
+
+Note:
+  NiiVue 전환으로 볼륨 렌더링은 클라이언트에서 처리됩니다.
+  백엔드는 /nifti/volume, /nifti/overlay로 파일을 직접 스트리밍합니다.
 
 케이스 ID 형식:
-  - Legacy: "case_0001" (cases 폴더)
   - Dataset: "pos_enriched_001_10667525" (dataset/positive)
   - Dataset: "neg_008_11155933" (dataset/negative)
-
-Window/Level 프리셋:
-  - liver: WW=150, WL=50 (간 조직 최적화)
-  - soft:  WW=400, WL=40 (연부 조직)
-
-사용 예시:
-  from app.services.nifti_service import NIfTIService
-
-  service = NIfTIService()
-  meta = await service.get_case_metadata("case_0001")
-  meta = await service.get_case_metadata("pos_enriched_001_10667525")
-  png = await service.render_slice("case_0001", "followup", 50, "liver")
 ============================================================================
 """
 
 import nibabel as nib
 import numpy as np
-from PIL import Image
-from io import BytesIO
 from pathlib import Path
 from typing import Optional, Tuple
 import asyncio
@@ -40,11 +28,6 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.config import settings
 from app.models.schemas import CaseMeta
-from app.services.cache_service import (
-    get_cached_volume, set_cached_volume,
-    get_cached_slice, set_cached_slice,
-    get_cached_ai_prob, set_cached_ai_prob
-)
 
 # 스레드 풀 (파일 I/O용)
 _executor = ThreadPoolExecutor(max_workers=4)
@@ -191,21 +174,20 @@ class NIfTIService:
         self, case_id: str, series: str
     ) -> Tuple[np.ndarray, list, bool]:
         """
-        NIfTI 볼륨 로드 (캐시 우선)
+        NIfTI 볼륨 로드
 
         Args:
-            case_id: 케이스 ID (예: "case_0001", "pos_enriched_001_...", "neg_008_...")
+            case_id: 케이스 ID (예: "pos_enriched_001_...", "neg_008_...")
             series: 시리즈 종류 ("baseline" | "followup")
 
         Returns:
             (volume_data, spacing, z_flipped) 튜플
             - z_flipped: Z축 반전 필요 여부 (affine matrix 기반 감지)
-        """
-        # 캐시 확인
-        cached = get_cached_volume(case_id, series)
-        if cached is not None:
-            return cached
 
+        Note:
+            NiiVue에서는 /nifti/volume으로 파일을 직접 스트리밍합니다.
+            이 함수는 메타데이터 조회용으로만 사용됩니다.
+        """
         # 파일 경로 매핑
         filepath = self._get_volume_filepath(case_id, series)
         if filepath is None or not filepath.exists():
@@ -217,30 +199,7 @@ class NIfTIService:
             _executor, self._load_nifti_sync, filepath
         )
 
-        # 캐시 저장
-        set_cached_volume(case_id, series, data, spacing, z_flipped)
-
         return data, spacing, z_flipped
-
-    async def load_ai_prob(self, case_id: str) -> Optional[np.ndarray]:
-        """AI 확률맵 로드"""
-        # 캐시 확인
-        cached = get_cached_ai_prob(case_id)
-        if cached is not None:
-            return cached
-
-        # 파일 경로 매핑
-        filepath = self._get_ai_prob_filepath(case_id)
-        if filepath is None or not filepath.exists():
-            return None
-
-        loop = asyncio.get_event_loop()
-        data, _ = await loop.run_in_executor(
-            _executor, self._load_nifti_sync, filepath
-        )
-
-        set_cached_ai_prob(case_id, data)
-        return data
 
     # =========================================================================
     # 메타데이터
@@ -330,7 +289,7 @@ class NIfTIService:
         self, case_id: str, series: str, z: int, wl: str, format: str = "png"
     ) -> tuple[bytes, str]:
         """
-        슬라이스를 이미지로 렌더링
+        슬라이스를 이미지로 렌더링 (레거시 - NiiVue 전환으로 미사용)
 
         Args:
             case_id: 케이스 ID
@@ -343,15 +302,9 @@ class NIfTIService:
             (이미지 bytes, media_type) 튜플
 
         Note:
-            z_flipped인 경우 내부적으로 인덱스 반전하여 처리
+            NiiVue에서는 /nifti/volume으로 파일을 직접 스트리밍합니다.
+            이 함수는 레거시 호환성을 위해 유지됩니다.
         """
-        # 캐시 키에 format 포함
-        cache_key = f"{format}"
-        cached = get_cached_slice(case_id, series, z, f"{wl}_{format}")
-        if cached is not None:
-            media_type = "image/png" if format == "png" else "image/jpeg"
-            return cached, media_type
-
         # 볼륨 로드
         volume, _, z_flipped = await self.load_volume(case_id, series)
 
@@ -366,9 +319,6 @@ class NIfTIService:
         slice_data = volume[:, :, actual_z].T  # Transpose for proper orientation
         windowed = self._apply_window_level(slice_data, wl)
         image_bytes = self._to_image(windowed, format)
-
-        # 캐시 저장 (논리적 인덱스 z로 저장)
-        set_cached_slice(case_id, series, z, f"{wl}_{format}", image_bytes)
 
         media_type = "image/png" if format == "png" else "image/jpeg"
         return image_bytes, media_type

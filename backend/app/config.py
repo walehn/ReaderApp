@@ -84,11 +84,7 @@ class Settings(BaseSettings):
         "soft": {"ww": 400, "wl": 40}
     }
 
-    # 캐시 설정
-    SLICE_CACHE_SIZE: int = 500  # 슬라이스 이미지 캐시
-    VOLUME_CACHE_SIZE: int = 10  # NIfTI 볼륨 캐시
-
-    # JPEG 품질
+    # JPEG 품질 (레거시 render_slice용)
     JPEG_QUALITY: int = 85
 
     # 병변 마커 최대 수
